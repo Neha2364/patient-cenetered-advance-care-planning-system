@@ -1,0 +1,12 @@
+Flask==3.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-Marshmallow==1.2.1
+marshmallow==3.26.2
+marshmallow-sqlalchemy==1.1.0
+PyJWT==2.10.1
+reportlab==4.3.0
+python-dotenv==1.0.1
+psycopg2-binary==2.9.10
+supabase==2.13.0
+requests==2.32.3
+Flask-Cors==5.0.0
