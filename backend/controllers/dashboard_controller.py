@@ -98,7 +98,15 @@ def doctor_get_patient_amd_history(patient_id):
             return jsonify({'error': 'Forbidden', 'message': 'You are not authorized to view this history.'}), 403
 
         history = AMDService.get_amd_history(patient_id)
-        return jsonify(amd_list_schema.dump(history)), 200
+        dumped = amd_list_schema.dump(history)
+        for item in dumped:
+            if item.get('storage_path') and ('/object/public/' in (item.get('pdf_url') or '') or not item.get('pdf_url')):
+                try:
+                    from backend.services.storage_service import StorageService
+                    item['pdf_url'] = StorageService.create_signed_url(item['storage_path'], expires_in=31536000)
+                except Exception:
+                    pass
+        return jsonify(dumped), 200
     except Exception as e:
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
 

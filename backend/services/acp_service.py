@@ -35,7 +35,7 @@ class ACPService:
             'preferred_place_of_care', 'preferred_hospital', 'preferred_physician_name',
             'preferred_physician_designation', 'preferred_physician_institution',
             'special_focus_priority', 'gender_identity_instructions', 'relationship_instructions',
-            'organ_donation', 'body_donation', 'last_rites', 'forward_to_dhrs',
+            'alternate_dhr_appointed', 'organ_donation', 'body_donation', 'last_rites', 'forward_to_dhrs',
             'forward_to_physician', 'forward_to_custodian', 'additional_wishes'
         ]:
             if field in data:

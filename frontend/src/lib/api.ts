@@ -86,13 +86,13 @@ export const authService = {
     return data;
   },
 
-  async register(payload: any) {
-    // Map fullName to full_name for backend schema validation
+  async register(payload: { fullName: string; email: string; password: string }) {
+    // Map fullName to full_name for backend schema validation.
+    // SECURITY: Do NOT include role — the backend always assigns 'patient' for public registration.
     const backendPayload = {
       email: payload.email,
       password: payload.password,
       full_name: payload.fullName,
-      role: payload.role,
     };
     return apiFetch("/auth/register", {
       method: "POST",
@@ -177,6 +177,12 @@ export const patientService = {
     });
   },
 
+  async deleteDHR(id: number): Promise<any> {
+    return apiFetch(`/dhr/${id}`, {
+      method: "DELETE",
+    });
+  },
+
   async generateAMD(payload: any): Promise<any> {
     return apiFetch("/amd/generate", {
       method: "POST",
@@ -195,7 +201,90 @@ export const patientService = {
   },
 };
 
-// Chat Service
+// AI Integration & Questionnaire Service
+export interface AiSessionData {
+  session_id: string;
+  language: string;
+  question_number?: number | null;
+  current_question?: number | null;
+  question?: string;
+  options?: string[] | null;
+  is_completed?: boolean;
+}
+
+export interface AiQuestionMetadata {
+  question_number: number;
+  question: string;
+  options: string[] | null;
+}
+
+export interface AiChatResponse {
+  status: "saved" | "explanation" | "invalid" | "completed" | "answer";
+  message: string;
+  question_number: number | null;
+  answer: string | null;
+  answered_question?: AiQuestionMetadata | null;
+  next_question?: AiQuestionMetadata | null;
+  is_completed?: boolean;
+  redirect_section?: string | null;
+  sources?: Array<{ source: string; category?: string; score?: number }> | null;
+}
+
+export interface AiConfirmReviewResponse extends AiChatResponse {
+  is_completed: boolean;
+  completed_at?: string;
+}
+
+export const aiService = {
+  async createSession(language: "en" | "kn" = "en"): Promise<AiSessionData> {
+    return apiFetch("/ai/session", {
+      method: "POST",
+      body: JSON.stringify({ language }),
+    });
+  },
+
+  async sendMessage(sessionId: string, message: string, questionNumber?: number | null): Promise<AiChatResponse> {
+    return apiFetch("/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, message, question_number: questionNumber }),
+    });
+  },
+
+  async getActiveSession(): Promise<{ session: AiSessionData | null }> {
+    return apiFetch("/ai/session/active");
+  },
+
+  async getPatientRecord(sessionId: string): Promise<any> {
+    return apiFetch(`/ai/patient-record?session_id=${encodeURIComponent(sessionId)}`);
+  },
+
+  async getDoctorDashboard(params: { sessionId?: string; patientId?: number }): Promise<any> {
+    const searchParams = new URLSearchParams();
+    if (params.sessionId) searchParams.append("session_id", params.sessionId);
+    if (params.patientId) searchParams.append("patient_id", String(params.patientId));
+    return apiFetch(`/ai/doctor-dashboard?${searchParams.toString()}`);
+  },
+
+  async checkHealth(): Promise<any> {
+    return apiFetch("/ai/health");
+  },
+
+  async updateSessionLanguage(sessionId: string, language: "en" | "kn"): Promise<AiSessionData> {
+    return apiFetch("/ai/session/language", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, language }),
+    });
+  },
+
+  async confirmReview(sessionId?: string): Promise<AiConfirmReviewResponse> {
+    return apiFetch("/ai/confirm-review", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
+};
+
+// Chat Service (legacy + proxy compatibility)
 export const chatService = {
   async getHistory(patientId: number): Promise<any[]> {
     return apiFetch(`/chat/history/${patientId}`);
@@ -231,5 +320,67 @@ export const doctorService = {
       method: "PUT",
       body: JSON.stringify({ review_status: status }),
     });
+  },
+
+  async getAiDashboard(patientId: number): Promise<any> {
+    return apiFetch(`/ai/doctor-dashboard?patient_id=${patientId}`);
+  },
+};
+
+// Admin Portal Service
+export const adminService = {
+  async getDashboard(): Promise<any> {
+    return apiFetch("/admin/dashboard");
+  },
+
+  async listDoctors(search?: string): Promise<any[]> {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : "";
+    return apiFetch(`/admin/doctors${qs}`);
+  },
+
+  async getDoctor(userId: number): Promise<any> {
+    return apiFetch(`/admin/doctors/${userId}`);
+  },
+
+  async createDoctor(data: {
+    full_name: string;
+    email: string;
+    mobile_number?: string;
+    specialization?: string;
+    hospital?: string;
+    medical_registration_number?: string;
+  }): Promise<any> {
+    return apiFetch("/admin/doctors", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateDoctor(
+    userId: number,
+    data: {
+      full_name?: string;
+      mobile_number?: string;
+      specialization?: string;
+      hospital?: string;
+      medical_registration_number?: string;
+    }
+  ): Promise<any> {
+    return apiFetch(`/admin/doctors/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async setDoctorStatus(userId: number, isActive: boolean): Promise<any> {
+    return apiFetch(`/admin/doctors/${userId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  },
+
+  async listPatients(search?: string): Promise<any[]> {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : "";
+    return apiFetch(`/admin/patients${qs}`);
   },
 };

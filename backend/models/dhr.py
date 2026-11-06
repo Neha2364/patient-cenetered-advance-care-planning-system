@@ -11,9 +11,9 @@ class DHR(db.Model):
     date_of_birth = db.Column(db.Date, nullable=True)
     government_id_type = db.Column(db.String(50), nullable=True)  # Aadhaar, Passport, Driving License, Voter ID
     government_id_number = db.Column(db.String(50), nullable=True)
-    mobile_primary = db.Column(db.String(20), nullable=False)
+    mobile_primary = db.Column(db.String(20), nullable=True)
     mobile_secondary = db.Column(db.String(20), nullable=True)
-    email_primary = db.Column(db.String(100), nullable=False)
+    email_primary = db.Column(db.String(100), nullable=True)
     email_secondary = db.Column(db.String(100), nullable=True)
     permanent_address = db.Column(db.Text, nullable=True)
     signing_address = db.Column(db.Text, nullable=True)

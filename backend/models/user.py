@@ -15,6 +15,7 @@ class User(db.Model):
 
     # Relationships
     patient_profile = db.relationship('Patient', back_populates='user', uselist=False, cascade="all, delete-orphan")
+    doctor_profile = db.relationship('DoctorProfile', back_populates='user', uselist=False, cascade="all, delete-orphan")
     performed_logs = db.relationship('AuditLog', back_populates='performer', cascade="all, delete")
 
     def set_password(self, password):

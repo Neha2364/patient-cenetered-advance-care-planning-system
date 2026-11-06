@@ -10,14 +10,17 @@ class ChatService:
 
     @staticmethod
     def map_ai_value(value):
-        """Helper to map conversational AI responses (e.g. Yes/No) to database enums."""
+        """Helper to map conversational AI responses (e.g. Yes/No, Want/Do not want) to database enums."""
         if not value:
             return 'NOT SPECIFIED'
-        val = str(value).strip().upper()
-        if val in ('NO', 'DO NOT WANT', 'FALSE', 'WITHDRAW', 'WITHHOLD'):
+        val = str(value).strip()
+        val_upper = val.upper()
+        if any(w in val_upper for w in ('DO NOT WANT', "DON'T WANT", 'WITHDRAW', 'WITHHOLD')) or val_upper in ('NO', 'FALSE', 'ಇಲ್ಲ', 'ಬೇಡ', 'ಬಯಸುವುದಿಲ್ಲ'):
             return 'DO NOT WANT'
-        elif val in ('YES', 'WANT', 'TRUE', 'CONTINUE', 'PROVIDE'):
+        elif any(w in val_upper for w in ('I WANT', 'CONTINUE', 'PROVIDE')) or val_upper in ('YES', 'WANT', 'TRUE', 'ಹೌದು', 'ಬಯಸುತ್ತೇನೆ'):
             return 'WANT'
+        elif any(w in val_upper for w in ('UNSURE', 'NOT SURE', 'UNDECIDED', 'ಖಚಿತವಿಲ್ಲ')):
+            return 'UNSURE'
         return 'NOT SPECIFIED'
 
     @staticmethod
@@ -86,17 +89,8 @@ class ChatService:
         if 'additional_wishes' in data:
             preferences.additional_wishes = data['additional_wishes']
 
-        # Perform auto-completion check if basic clinical directives are set
-        critical_vals = [
-            preferences.cpr_preference,
-            preferences.ventilator_preference,
-            preferences.dialysis_preference
-        ]
-        if all(val != 'NOT SPECIFIED' for val in critical_vals):
-            preferences.is_completed = True
-            if not preferences.completed_at:
-                preferences.completed_at = datetime.utcnow()
-
+        # ACP completion is strictly reserved for the explicit Confirmation & Review
+        # step and must never be auto-completed by intermediate chat submissions.
         db.session.commit()
 
         # Log to chat history if conversation metadata is provided

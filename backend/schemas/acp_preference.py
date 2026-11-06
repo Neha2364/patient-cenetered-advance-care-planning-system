@@ -36,8 +36,8 @@ class ACPPreferenceSchema(ma.SQLAlchemyAutoSchema):
     @validates('iv_fluids_preference')
     @validates('nutrition_hydration_preference')
     def validate_preference(self, value):
-        if value not in ('WANT', 'DO NOT WANT', 'NOT SPECIFIED'):
-            raise ValidationError("Preferences must be 'WANT', 'DO NOT WANT', or 'NOT SPECIFIED'.")
+        if value not in ('WANT', 'DO NOT WANT', 'NOT SPECIFIED', 'UNSURE', 'UNDECIDED'):
+            raise ValidationError("Preferences must be 'WANT', 'DO NOT WANT', 'UNSURE', or 'NOT SPECIFIED'.")
 
     @validates('organ_donation')
     @validates('body_donation')

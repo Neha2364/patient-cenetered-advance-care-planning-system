@@ -12,7 +12,7 @@ class DHRSchema(ma.SQLAlchemyAutoSchema):
     patient_id = fields.Int(required=True)
     full_name = fields.Str(required=True)
     relationship = fields.Str(required=True)
-    email_primary = fields.Email(required=True)
+    email_primary = fields.Email(required=False, allow_none=True)
     email_secondary = fields.Email(allow_none=True)
     mobile_primary = fields.Str(required=True)
     mobile_secondary = fields.Str(allow_none=True)

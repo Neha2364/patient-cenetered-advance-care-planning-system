@@ -9,6 +9,7 @@ class ChatHistory(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.patient_id', ondelete='CASCADE'), nullable=False)
     conversation_id = db.Column(db.String(100), nullable=False, index=True)
     session_id = db.Column(db.String(100), nullable=False, index=True)
+    question_number = db.Column(db.Integer, nullable=True)
     user_message = db.Column(db.Text, nullable=False)
     bot_response = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

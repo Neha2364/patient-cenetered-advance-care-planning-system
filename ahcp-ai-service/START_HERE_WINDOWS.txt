@@ -1,0 +1,117 @@
+AHCP AI SERVICE - WINDOWS QUICK START GUIDE
+============================================
+
+This guide provides exact PowerShell commands to configure, test, and run the AHCP AI Service on Windows (Python 3.11, 3.12, or 3.13).
+
+1. OPEN THE PROJECT DIRECTORY
+-----------------------------
+Open PowerShell and navigate to the project directory (ensure app.py and requirements.txt are in the current folder):
+
+    Set-Location "C:\Users\Poorvikapriya s\Downloads\AHCP_AI_Service_Package (1)"
+
+Verify you are in the correct root directory:
+
+    Get-ChildItem -Name app.py, requirements.txt
+
+
+2. CREATE AND ACTIVATE THE VIRTUAL ENVIRONMENT
+-----------------------------------------------
+Create the virtual environment (.venv):
+
+    python -m venv .venv
+
+Activate the virtual environment:
+
+    .\.venv\Scripts\Activate.ps1
+
+(If script execution is disabled on your system, run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass)
+
+
+3. INSTALL DEPENDENCIES
+-----------------------
+Upgrade pip and install all required packages:
+
+    python -m pip install --upgrade pip
+    python -m pip install -r requirements.txt
+
+
+4. CONFIGURE ENVIRONMENT (.env)
+--------------------------------
+Copy .env.example to create your local .env configuration:
+
+    Copy-Item .env.example .env
+
+Edit .env or configure environment variables in your PowerShell session:
+
+    # Required: Shared private secret for protected routes
+    $env:AHCP_AI_SERVICE_API_KEY="your-random-secure-secret-key"
+
+    # Optional: Only needed for live OpenRouter RAG generation
+    $env:OPENROUTER_API_KEY="your-openrouter-key"
+    $env:OPENROUTER_MODEL="openrouter/free"
+
+Note: Never commit .env with real secrets to version control (.env is excluded by .gitignore).
+
+
+5. RUN AUTOMATED TESTS
+----------------------
+Run the complete offline test suite (all tests mock LLM calls so no API quota is consumed):
+
+    $env:AHCP_AI_SERVICE_API_KEY="test-secret"
+    python -m pytest -v
+
+
+6. START THE API SERVER
+-----------------------
+Start the FastAPI server using Uvicorn:
+
+    uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+
+The API will be available at: http://127.0.0.1:8000
+Interactive Swagger documentation: http://127.0.0.1:8000/docs
+
+
+7. TEST THE 5 API ENDPOINTS (IN A SECOND POWERSHELL WINDOW)
+-----------------------------------------------------------
+Open a new PowerShell terminal and test the endpoints:
+
+A. Public Health Check (No Key Required):
+    Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method GET
+
+B. Start a Questionnaire Session (English or Kannada):
+    $headers = @{"X-API-Key"="your-random-secure-secret-key"}
+
+    # English Session:
+    $session = Invoke-RestMethod -Uri "http://127.0.0.1:8000/session" -Method POST -Headers $headers -ContentType "application/json" -Body '{"language":"en"}'
+    $sid = $session.session_id
+    Write-Host "Created session:" $sid
+
+    # Or Kannada Session:
+    # $session = Invoke-RestMethod -Uri "http://127.0.0.1:8000/session" -Method POST -Headers $headers -ContentType "application/json" -Body '{"language":"kn"}'
+
+C. Answer Questionnaire Questions via /chat:
+    # Answer Q1 (Full name):
+    Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method POST -Headers $headers -ContentType "application/json" -Body (@{session_id=$sid; message="Jane Doe"} | ConvertTo-Json)
+
+    # Answer Q2 (Date of birth):
+    Invoke-RestMethod -Uri "http://127.0.0.1:8000/chat" -Method POST -Headers $headers -ContentType "application/json" -Body (@{session_id=$sid; message="1985-04-12"} | ConvertTo-Json)
+
+D. Retrieve the Structured Patient Record:
+    Invoke-RestMethod -Uri "http://127.0.0.1:8000/patient-record?session_id=$sid" -Method POST -Headers $headers
+
+E. Retrieve the Doctor Dashboard Summary:
+    Invoke-RestMethod -Uri "http://127.0.0.1:8000/doctor-dashboard?session_id=$sid" -Method POST -Headers $headers
+
+F. Test Authentication Enforcement:
+    # Attempting without X-API-Key will return 401 Unauthorized:
+    try {
+        Invoke-RestMethod -Uri "http://127.0.0.1:8000/session" -Method POST -ContentType "application/json" -Body '{"language":"en"}'
+    } catch {
+        Write-Host "Correctly rejected missing key:" $_.Exception.Response.StatusCode
+    }
+
+
+NOTES
+-----
+- The FAISS vector index is built locally in memory on first retrieval from PDFs in knowledge/.
+- In-memory session store is used for standalone operation; active sessions reset on process restart.

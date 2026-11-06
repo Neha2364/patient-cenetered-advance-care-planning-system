@@ -3,6 +3,7 @@ from backend.extensions import db
 from backend.models.user import User
 from backend.schemas.user import UserRegisterSchema, UserLoginSchema, UserSchema
 from backend.utils.auth_helpers import generate_token
+from backend.services.admin_service import AdminService
 from marshmallow import ValidationError
 
 # Instantiate schemas
@@ -21,15 +22,20 @@ def format_validation_error(messages):
     return str(messages)
 
 def register():
-    """Register a new user (POST /api/auth/register)."""
+    """Register a new user (POST /api/auth/register).
+
+    Security: The role is ALWAYS set to 'patient' server-side.
+    Any 'role' value sent by the client is silently ignored.
+    Doctor accounts must be created via the secure CLI script only.
+    """
     try:
         json_data = request.get_json()
         if not json_data:
             return jsonify({'error': 'Bad Request', 'message': 'No input data provided'}), 400
 
-        # Normalize role string if provided
-        if 'role' in json_data and isinstance(json_data['role'], str):
-            json_data['role'] = json_data['role'].lower()
+        # SECURITY: Strip any client-supplied role before validation.
+        # Public registration always produces a 'patient' account.
+        json_data.pop('role', None)
 
         # Validate request payload
         validated_data = register_schema.load(json_data)
@@ -40,11 +46,11 @@ def register():
         if existing_user:
             return jsonify({'error': 'Bad Request', 'message': f'A user with email {email} already exists.'}), 400
 
-        # Create new user
+        # Create new user — role is always 'patient' for public registration
         new_user = User(
             full_name=validated_data['full_name'],
             email=email,
-            role=validated_data['role']
+            role='patient'
         )
         new_user.set_password(validated_data['password'])
 
@@ -78,6 +84,13 @@ def login():
 
         if not user.check_password(password):
             return jsonify({'error': 'Unauthorized', 'message': 'Invalid credentials.'}), 401
+
+        # Block deactivated doctor accounts
+        if user.role == 'doctor' and not AdminService.is_doctor_active(user.id):
+            return jsonify({
+                'error': 'Unauthorized',
+                'message': 'Your doctor account has been deactivated. Please contact the administrator.'
+            }), 401
 
         # Generate JWT token compatible with token_required decorator
         token = generate_token(user.id, user.email, user.role)

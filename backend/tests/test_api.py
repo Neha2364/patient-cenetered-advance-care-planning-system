@@ -9,6 +9,8 @@ from backend.models.user import User
 from backend.models.patient import Patient
 from backend.models.acp_preference import ACPPreference
 from backend.models.dhr import DHR
+from backend.models.ai_session import AISession
+from backend.models.chat_history import ChatHistory
 from backend.utils.auth_helpers import generate_token
 
 class ACPTestCase(unittest.TestCase):
@@ -24,12 +26,12 @@ class ACPTestCase(unittest.TestCase):
         self.app_context = self.app.app_context()
         self.app_context.push()
 
-        # Re-create database tables
-        db.create_all()
-        
-        # Clean up existing data for test isolation
+        # Clean up existing test data for test isolation
         try:
-            db.session.execute(db.text("TRUNCATE TABLE audit_logs, generated_amds, dhrs, acp_preferences, patients, users CASCADE;"))
+            for test_email in ["patient@test.com", "doctor@test.com", "admin@test.com"]:
+                u = User.query.filter_by(email=test_email).first()
+                if u:
+                    db.session.delete(u)
             db.session.commit()
         except Exception:
             db.session.rollback()
@@ -39,8 +41,15 @@ class ACPTestCase(unittest.TestCase):
 
     def tearDown(self):
         """Clean up databases and pop testing context."""
+        try:
+            for test_email in ["patient@test.com", "doctor@test.com", "admin@test.com"]:
+                u = User.query.filter_by(email=test_email).first()
+                if u:
+                    db.session.delete(u)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         db.session.remove()
-        db.drop_all()
         self.app_context.pop()
 
     def seed_users(self):
@@ -225,6 +234,198 @@ class ACPTestCase(unittest.TestCase):
         data = json.loads(res.data)
         self.assertEqual(data['status'], 'Active')
         self.assertEqual(data['pdf_url'], 'https://mock.supabase.co/test.pdf')
+
+    def test_ai_session_language_toggle(self):
+        """Verify seamless language toggle without loss of active session or state."""
+        pat = Patient(user_id=self.p_user.id, phone="+919876543210", preferred_language="English")
+        db.session.add(pat)
+        db.session.commit()
+
+        session = AISession(
+            session_id="test-session-toggle-1",
+            patient_id=pat.patient_id,
+            language="en",
+            current_question=21
+        )
+        db.session.add(session)
+        db.session.commit()
+
+        # Switch to Kannada
+        res = self.client.post(
+            '/api/ai/session/language',
+            data=json.dumps({"session_id": session.session_id, "language": "kn"}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertEqual(data['language'], 'kn')
+        self.assertEqual(data['current_question'], 21)
+        self.assertIsNotNone(data['question'])
+
+        # Verify patient record updated
+        db.session.refresh(pat)
+        self.assertEqual(pat.preferred_language, 'Kannada')
+
+        # Switch back to English
+        res = self.client.post(
+            '/api/ai/session/language',
+            data=json.dumps({"session_id": session.session_id, "language": "en"}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertEqual(data['language'], 'en')
+        db.session.refresh(pat)
+        self.assertEqual(pat.preferred_language, 'English')
+
+    def test_ai_follow_up_chat_and_educational_unsure(self):
+        """Verify follow-up conversational answers, validations, and Unsure educational explanation."""
+        pat = Patient(user_id=self.p_user.id, preferred_language="English")
+        db.session.add(pat)
+        db.session.commit()
+
+        dhr = DHR(
+            patient_id=pat.patient_id,
+            full_name="Ananya Kumar",
+            relationship="Daughter",
+            mobile_primary="Pending",
+            email_primary="pending@example.com",
+            preference_order=1
+        )
+        db.session.add(dhr)
+        db.session.commit()
+
+        session = AISession(
+            session_id="test-session-followup-1",
+            patient_id=pat.patient_id,
+            language="en",
+            current_question=21
+        )
+        db.session.add(session)
+        db.session.commit()
+
+        # 1. Answer Q21 (Primary DHR phone)
+        res = self.client.post(
+            '/api/ai/chat',
+            data=json.dumps({"session_id": session.session_id, "message": "+919876543299"}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        db.session.refresh(dhr)
+        self.assertEqual(dhr.mobile_primary, "+919876543299")
+
+        # 2. Answer Q22 with invalid email
+        session.current_question = 22
+        db.session.commit()
+        res = self.client.post(
+            '/api/ai/chat',
+            data=json.dumps({"session_id": session.session_id, "message": "invalidemail"}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertEqual(data['status'], 'invalid')
+
+        # 3. Answer Q22 with valid email
+        res = self.client.post(
+            '/api/ai/chat',
+            data=json.dumps({"session_id": session.session_id, "message": "ananya@example.com"}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        db.session.refresh(dhr)
+        self.assertEqual(dhr.email_primary, "ananya@example.com")
+
+        # 4. Answer Q30 (Body donation) with Unsure
+        session.current_question = 30
+        db.session.commit()
+        res = self.client.post(
+            '/api/ai/chat',
+            data=json.dumps({"session_id": session.session_id, "message": "Unsure"}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertEqual(data['status'], 'explanation')
+        self.assertIn("Body donation", data['message'])
+
+        # Verify body donation was NOT silently committed to Yes or No
+        pref = ACPPreference.query.filter_by(patient_id=pat.patient_id).first()
+        if pref:
+            self.assertNotEqual(pref.body_donation, 'YES')
+            self.assertNotEqual(pref.body_donation, 'NO')
+
+    def test_ai_confirm_review_workflow(self):
+        """Verify explicit Confirmation & Review, required fields validation, and dashboard completion status."""
+        pat = Patient(user_id=self.p_user.id, preferred_language="English")
+        db.session.add(pat)
+        db.session.commit()
+
+        session = AISession(
+            session_id="test-session-review-1",
+            patient_id=pat.patient_id,
+            language="en",
+            current_question=33
+        )
+        db.session.add(session)
+        db.session.commit()
+
+        # 1. Attempt review confirmation with missing contact fields -> Should fail with 400
+        res = self.client.post(
+            '/api/ai/confirm-review',
+            data=json.dumps({"session_id": session.session_id}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 400)
+        data = json.loads(res.data)
+        self.assertIn("missing", data['message'].lower())
+
+        # 2. Populate required patient & DHR contact fields
+        pat.phone = "+919876543210"
+        pat.address = "123 MG Road, Bangalore"
+        dhr = DHR(
+            patient_id=pat.patient_id,
+            full_name="Meera Kumar",
+            relationship="Spouse",
+            mobile_primary="+919876543222",
+            email_primary="meera@example.com",
+            preference_order=1
+        )
+        db.session.add(dhr)
+        db.session.commit()
+
+        # 3. Confirm review -> Should succeed
+        res = self.client.post(
+            '/api/ai/confirm-review',
+            data=json.dumps({"session_id": session.session_id}),
+            content_type='application/json',
+            headers=self.patient_headers
+        )
+        self.assertEqual(res.status_code, 200)
+        data = json.loads(res.data)
+        self.assertTrue(data['is_completed'])
+
+        # Verify DB records
+        pref = ACPPreference.query.filter_by(patient_id=pat.patient_id).first()
+        self.assertIsNotNone(pref)
+        self.assertTrue(pref.is_completed)
+        self.assertIsNotNone(pref.completed_at)
+        self.assertEqual(pref.review_status, "Pending Review")
+
+        # Verify Doctor patients list reflects completed status
+        doc_res = self.client.get('/api/doctor/patients', headers=self.doctor_headers)
+        self.assertEqual(doc_res.status_code, 200)
+        patients_list = json.loads(doc_res.data)
+        matched = next((p for p in patients_list if p['patient_id'] == pat.patient_id), None)
+        self.assertIsNotNone(matched)
+        self.assertTrue(matched['is_completed'])
 
 if __name__ == '__main__':
     unittest.main()

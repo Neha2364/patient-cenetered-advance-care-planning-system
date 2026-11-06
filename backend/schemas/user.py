@@ -16,11 +16,14 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
     role = fields.Str(required=True)
 
 class UserRegisterSchema(Schema):
-    """Validation schema for user registration payload."""
+    """Validation schema for user registration payload.
+    
+    NOTE: 'role' is intentionally excluded. The backend always assigns
+    role='patient' for public registration. The client must never control role.
+    """
     email = fields.Email(required=True)
     password = fields.Str(required=True, validate=validate.Length(min=6))
     full_name = fields.Str(required=True, validate=validate.Length(min=1))
-    role = fields.Str(required=True, validate=validate.OneOf(['patient', 'doctor', 'admin']))
 
 class UserLoginSchema(Schema):
     """Validation schema for user login payload."""

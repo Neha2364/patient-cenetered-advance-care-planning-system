@@ -13,6 +13,8 @@ def create_app(config_class=Config):
 
     # 1. Load config
     app.config.from_object(config_class)
+    if (app.config.get('ENV') == 'testing' or app.config.get('TESTING')) and os.getenv("DATABASE_URL") == "sqlite:///:memory:":
+        app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///:memory:"
     
     # 2. Validate configuration (requires Supabase connection strings, keys, etc.)
     # In testing environment, we might skip strict validation to allow mock databases

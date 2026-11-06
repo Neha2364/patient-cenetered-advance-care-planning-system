@@ -19,6 +19,8 @@ class ACPPreference(db.Model):
     
     # Care Details
     pain_management = db.Column(db.Text, nullable=True)  # Comfort Care/description
+    goals_of_care = db.Column(db.String(120), nullable=True)
+    alternate_dhr_appointed = db.Column(db.Boolean, nullable=True)
     preferred_place_of_care = db.Column(db.String(50), nullable=True)  # Home, Hospital, Hospice
     preferred_hospital = db.Column(db.String(150), nullable=True)
     preferred_physician_name = db.Column(db.String(100), nullable=True)

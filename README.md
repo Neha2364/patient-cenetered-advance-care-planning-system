@@ -156,19 +156,53 @@ This runs integrations testing, checks route protection decorators, maps prefere
 
 To run backend:
 
-* **PowerShell:**
-  ```powershell
-  .\backend\.venv\Scripts\Activate.ps1
-  python -m backend.app
-  ```
-
 * **Command Prompt (CMD):**
   ```cmd
   .\backend\.venv\Scripts\activate.bat
   python -m backend.app
   ```
 
+* **PowerShell:**
+  ```powershell
+  .\backend\.venv\Scripts\Activate.ps1
+  python -m backend.app
+  ```
+
+
+## To run ahcp-ai-service:
+
+```powershell
+cd C:\ACP_System\ahcp-ai-service
+.\.venv\Scripts\activate
+python -m uvicorn app:app --host 127.0.0.1 --port 8000
+```
+## Frontend
+```powershell
+cd C:\ACP_System\frontend
+npm run dev -- --port 8080 
+```
+## open seperate portals
+cd C:\ACP_System
+.\start-portals.ps1
+
+
+
 * **Direct execution without activating:**
   ```powershell
-  .\backend\.venv\Scripts\python.exe -m backend.app
+  C:\ACP_System\ahcp-ai-service\.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
   ```
+
+* **If Port 8000 is already in use (`[Errno 10048]`):**
+  Check health or terminate the existing background process:
+  ```powershell
+  # Check if already running:
+  curl.exe http://127.0.0.1:8000/health
+
+  # Or kill the process occupying port 8000:
+  Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess -Force
+  ```
+  cd C:\ACP_System\ahcp-ai-service
+..\backend\.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8000
+
+cd C:\ACP_System
+backend\.venv\Scripts\python.exe -m backend.app

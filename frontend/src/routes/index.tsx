@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -18,13 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { authService } from "@/lib/api";
 import { toast } from "sonner";
@@ -32,11 +25,11 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Sign in — ACP Care" },
+      { title: "Patient Portal — ACP Care" },
       {
         name: "description",
         content:
-          "Sign in or create an ACP Care account to begin your Advance Care Planning journey with AI-guided, private, multilingual support.",
+          "Sign in or create an ACP Care patient account to begin your Advance Care Planning journey with AI-guided, private, multilingual support.",
       },
     ],
   }),
@@ -70,7 +63,7 @@ function AuthPage() {
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const navigate = useNavigate();
 
-
+  const handleSuccess = () => navigate({ to: "/patient-dashboard" });
 
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -85,7 +78,7 @@ function AuthPage() {
           </div>
           <div>
             <div className="text-lg font-bold leading-tight">ACP Care</div>
-            <div className="text-xs text-white/80">Advance Care Planning</div>
+            <div className="text-xs text-white/80">Patient Portal</div>
           </div>
         </div>
 
@@ -101,8 +94,8 @@ function AuthPage() {
             when it matters most.
           </motion.h1>
           <p className="mt-4 text-[15px] leading-relaxed text-white/85">
-            ACP Care helps you plan the care you want with clarity, dignity, and confidence — guided
-            by AI, protected by design.
+            ACP Care helps you plan the care you want with clarity, dignity, and confidence —
+            guided by AI, protected by design.
           </p>
         </div>
 
@@ -149,7 +142,7 @@ function AuthPage() {
               </div>
               <div>
                 <div className="text-base font-bold">ACP Care</div>
-                <div className="text-[11px] text-muted-foreground">Advance Care Planning</div>
+                <div className="text-[11px] text-muted-foreground">Patient Portal</div>
               </div>
             </div>
           </div>
@@ -191,24 +184,22 @@ function AuthPage() {
 
             <AnimatePresence mode="wait">
               {tab === "signin" ? (
-                <SignInForm key="signin" onAuthSuccess={(role) => navigate({ to: role === "doctor" ? "/doctor-dashboard" : "/patient-dashboard" })} />
+                <SignInForm key="signin" onSuccess={handleSuccess} />
               ) : (
-                <SignUpForm key="signup" onAuthSuccess={(role) => navigate({ to: role === "doctor" ? "/doctor-dashboard" : "/patient-dashboard" })} />
+                <SignUpForm key="signup" onSuccess={handleSuccess} />
               )}
             </AnimatePresence>
-
-
           </div>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
             By continuing you agree to our{" "}
-            <Link to="/" className="underline underline-offset-2">
+            <a href="#" className="underline underline-offset-2">
               Terms
-            </Link>{" "}
+            </a>{" "}
             and{" "}
-            <Link to="/" className="underline underline-offset-2">
+            <a href="#" className="underline underline-offset-2">
               Privacy Policy
-            </Link>
+            </a>
             .
           </p>
         </motion.div>
@@ -225,7 +216,10 @@ function FieldIcon({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SignInForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }) {
+// ─── Patient Sign-In ───────────────────────────────────────────────────────────
+// Accepts ONLY accounts with role = "patient".
+// Doctors must use /doctor-login; Admins must use /admin-login.
+function SignInForm({ onSuccess }: { onSuccess: () => void }) {
   const [show, setShow] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -236,8 +230,16 @@ function SignInForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }
     setLoading(true);
     try {
       const user = await authService.login({ email, password });
+      // Enforce patient-only access for this portal
+      if (user.role !== "patient") {
+        authService.logout();
+        toast.error(
+          "This portal is for patients only. Please use your designated portal to sign in.",
+        );
+        return;
+      }
       toast.success("Welcome back!");
-      onAuthSuccess(user.role);
+      onSuccess();
     } catch (err: any) {
       const msg = typeof err?.message === "string" ? err.message : "Invalid credentials.";
       toast.error(msg);
@@ -320,10 +322,10 @@ function SignInForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }
   );
 }
 
-function SignUpForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }) {
+// ─── Patient Registration ──────────────────────────────────────────────────────
+// Backend always assigns role = "patient". No role field is ever sent by the client.
+function SignUpForm({ onSuccess }: { onSuccess: () => void }) {
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("patient");
-  const [language, setLanguage] = useState("en");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -341,11 +343,11 @@ function SignUpForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }
     }
     setLoading(true);
     try {
-      await authService.register({ fullName, email, role, password });
-      // Automatically log in after registration
-      const user = await authService.login({ email, password });
+      // Do NOT send a role — backend always assigns 'patient'
+      await authService.register({ fullName, email, password });
+      await authService.login({ email, password });
       toast.success("Account created successfully!");
-      onAuthSuccess(user.role);
+      onSuccess();
     } catch (err: any) {
       const msg = typeof err?.message === "string" ? err.message : "Failed to create account.";
       toast.error(msg);
@@ -376,32 +378,6 @@ function SignUpForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }
             onChange={(e) => setFullName(e.target.value)}
             required
           />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Role</Label>
-          <Select value={role} onValueChange={(val) => setRole(val)}>
-            <SelectTrigger className="h-11 rounded-xl">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="patient">Patient</SelectItem>
-              <SelectItem value="doctor">Doctor</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium">Language</Label>
-          <Select value={language} onValueChange={(val) => setLanguage(val)}>
-            <SelectTrigger className="h-11 rounded-xl">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">English</SelectItem>
-              <SelectItem value="hi">हिन्दी</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </div>
       <div className="space-y-1.5">
@@ -448,16 +424,14 @@ function SignUpForm({ onAuthSuccess }: { onAuthSuccess: (role: string) => void }
       </div>
       <label className="flex items-start gap-2 text-xs text-muted-foreground">
         <Checkbox id="terms" className="mt-0.5" required />
-        <span>
-          I agree to the Terms of Service and acknowledge the Privacy Policy.
-        </span>
+        <span>I agree to the Terms of Service and acknowledge the Privacy Policy.</span>
       </label>
       <Button
         type="submit"
         disabled={loading}
         className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-md transition hover:bg-primary/90 hover:shadow-lg disabled:opacity-50"
       >
-        {loading ? "Creating..." : "Create account"}
+        {loading ? "Creating..." : "Create Patient Account"}
       </Button>
     </motion.form>
   );

@@ -9,6 +9,8 @@ import {
   Users,
   ClipboardCheck,
   BarChart3,
+  ShieldCheck,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +23,7 @@ const patientNav: NavItem[] = [
   { title: "Dashboard", url: "/patient-dashboard", icon: LayoutDashboard },
   { title: "ACP Chatbot", url: "/patient-dashboard/chat", icon: MessageSquare },
   { title: "My Documents", url: "/patient-dashboard/documents", icon: FileText },
-  { title: "Settings", url: "/patient-dashboard/settings", icon: Settings },
+  { title: "Profile", url: "/patient-dashboard/settings", icon: Settings },
 ];
 
 const doctorNav: NavItem[] = [
@@ -29,7 +31,15 @@ const doctorNav: NavItem[] = [
   { title: "My Patients", url: "/doctor-dashboard/patients", icon: Users },
   { title: "ACP Reviews", url: "/doctor-dashboard/reviews", icon: ClipboardCheck },
   { title: "Analytics", url: "/doctor-dashboard/analytics", icon: BarChart3 },
-  { title: "Settings", url: "/doctor-dashboard/settings", icon: Settings },
+  { title: "Profile", url: "/doctor-dashboard/settings", icon: Settings },
+];
+
+const adminNav: NavItem[] = [
+  { title: "Dashboard", url: "/admin-dashboard", icon: LayoutDashboard },
+  { title: "Manage Doctors", url: "/admin-dashboard/doctors", icon: Users },
+  { title: "Add Doctor", url: "/admin-dashboard/doctors/add", icon: UserPlus },
+  { title: "Manage Patients", url: "/admin-dashboard/patients", icon: ClipboardCheck },
+  { title: "Account Settings", url: "/admin-dashboard/settings", icon: Settings },
 ];
 
 export function BrandLogo({ compact = false }: { compact?: boolean }) {
@@ -54,12 +64,12 @@ export function AppSidebar({
   role,
   user,
 }: {
-  role: "patient" | "doctor";
+  role: "patient" | "doctor" | "admin";
   user: { name: string; email: string; initial: string };
 }) {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
-  const items = role === "patient" ? patientNav : doctorNav;
-  const roleLabel = role === "patient" ? "PATIENT" : "DOCTOR";
+  const items = role === "patient" ? patientNav : role === "admin" ? adminNav : doctorNav;
+  const roleLabel = role === "patient" ? "PATIENT" : role === "admin" ? "ADMIN" : "DOCTOR";
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-border bg-white lg:flex">

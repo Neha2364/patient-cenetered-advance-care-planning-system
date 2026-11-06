@@ -19,6 +19,11 @@ class Patient(db.Model):
     current_address = db.Column(db.Text, nullable=True)
     municipality_panchayat = db.Column(db.String(100), nullable=True)
     beliefs_values = db.Column(db.Text, nullable=True)
+    chronic_conditions = db.Column(db.Text, nullable=True)
+    serious_hospitalization = db.Column(db.Text, nullable=True)
+    long_term_medications = db.Column(db.Text, nullable=True)
+    allergies = db.Column(db.Text, nullable=True)
+    personal_values = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -29,6 +34,7 @@ class Patient(db.Model):
     chat_histories = db.relationship('ChatHistory', back_populates='patient', cascade="all, delete-orphan")
     generated_amds = db.relationship('GeneratedAMD', back_populates='patient', cascade="all, delete-orphan")
     audit_logs = db.relationship('AuditLog', back_populates='patient', cascade="all, delete-orphan")
+    ai_sessions = db.relationship('AISession', back_populates='patient', cascade="all, delete-orphan", order_by="desc(AISession.created_at)")
 
     def __repr__(self):
         return f"<Patient ID {self.patient_id} (User ID {self.user_id})>"

@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -71,7 +71,11 @@ const sectionCompletion = [
 
 function DoctorDashboard() {
   const currentUser = authService.getCurrentUser();
-  if (!currentUser) return <RequireAuthentication>{null}</RequireAuthentication>;
+  if (!currentUser) return <RequireAuthentication allowedRoles={["doctor", "admin"]}>{null}</RequireAuthentication>;
+  // Enforce doctor/admin role — patients who land here are redirected
+  if (currentUser.role !== "doctor" && currentUser.role !== "admin") {
+    return <RequireAuthentication allowedRoles={["doctor", "admin"]}>{null}</RequireAuthentication>;
+  }
 
   const doctor = useMemo(() => {
     return {
@@ -274,6 +278,8 @@ function priorityStyle(p: string) {
 }
 
 function PatientTable({ patients, search, setSearch, statusFilter, setStatusFilter, refetch }: any) {
+  const navigate = useNavigate();
+
   const handleReview = async (patientId: number, status: string) => {
     try {
       await doctorService.reviewPatientACP(patientId, status);
@@ -281,6 +287,13 @@ function PatientTable({ patients, search, setSearch, statusFilter, setStatusFilt
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleViewPatient = (patientId: number) => {
+    navigate({
+      to: "/doctor-dashboard/patients/$patientId",
+      params: { patientId: String(patientId) },
+    });
   };
 
   return (
@@ -357,16 +370,28 @@ function PatientTable({ patients, search, setSearch, statusFilter, setStatusFilt
               >
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-gradient text-xs font-semibold text-white">
+                    <button
+                      type="button"
+                      onClick={() => handleViewPatient(p.id)}
+                      className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full bg-brand-gradient text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                      title={`View ${p.name}'s ACP record`}
+                    >
                       {p.initial}
-                    </div>
+                    </button>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-foreground">{p.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => handleViewPatient(p.id)}
+                        className="truncate text-left text-sm font-semibold text-foreground transition-colors hover:text-primary cursor-pointer block max-w-[180px]"
+                        title={`View ${p.name}'s ACP record`}
+                      >
+                        {p.name}
+                      </button>
                       <div className="text-[11px] text-muted-foreground">Patient #{p.id}</div>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="text-sm text-foreground">{p.age}</TableCell>
+                <TableCell className="text-sm text-foreground">{p.age || "—"}</TableCell>
                 <TableCell>
                   <div className="flex w-[160px] items-center gap-2">
                     <Progress value={p.completion} className="h-1.5 flex-1" />
@@ -386,17 +411,32 @@ function PatientTable({ patients, search, setSearch, statusFilter, setStatusFilt
                 <TableCell className="text-xs text-muted-foreground">{p.updated}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" aria-label="View">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-lg cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors"
+                      aria-label={`View ACP details for ${p.name}`}
+                      title={`View ACP details for ${p.name}`}
+                      onClick={() => handleViewPatient(p.id)}
+                    >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" aria-label="Review">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-lg cursor-pointer hover:bg-surface transition-colors"
+                      aria-label={`Review ACP for ${p.name}`}
+                      title={`Review ACP for ${p.name}`}
+                      onClick={() => handleViewPatient(p.id)}
+                    >
                       <MessageSquare className="h-4 w-4" />
                     </Button>
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-8 w-8 rounded-lg text-success" 
-                      aria-label="Approve"
+                      className="h-8 w-8 rounded-lg text-success cursor-pointer hover:bg-success/10 transition-colors" 
+                      aria-label={`Approve ACP for ${p.name}`}
+                      title={`Approve ACP for ${p.name}`}
                       onClick={() => handleReview(p.id, "Reviewed")}
                     >
                       <CheckCheck className="h-4 w-4" />

@@ -34,7 +34,12 @@ class PatientService:
             permanent_address=data.get('permanent_address'),
             current_address=data.get('current_address'),
             municipality_panchayat=data.get('municipality_panchayat'),
-            beliefs_values=data.get('beliefs_values')
+            beliefs_values=data.get('beliefs_values'),
+            chronic_conditions=data.get('chronic_conditions'),
+            serious_hospitalization=data.get('serious_hospitalization'),
+            long_term_medications=data.get('long_term_medications'),
+            allergies=data.get('allergies'),
+            personal_values=data.get('personal_values')
         )
 
         db.session.add(patient)
@@ -71,7 +76,8 @@ class PatientService:
         for field in [
             'age', 'gender', 'date_of_birth', 'phone', 'address', 
             'preferred_language', 'government_id_type', 'government_id_number', 
-            'permanent_address', 'current_address', 'municipality_panchayat', 'beliefs_values'
+            'permanent_address', 'current_address', 'municipality_panchayat', 'beliefs_values',
+            'chronic_conditions', 'serious_hospitalization', 'long_term_medications', 'allergies', 'personal_values'
         ]:
             if field in data:
                 setattr(patient, field, data[field])

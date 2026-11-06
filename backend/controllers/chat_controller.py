@@ -79,7 +79,7 @@ def get_chat_history(patient_id):
     """Retrieve all chat messages (conversational history) for a specific patient."""
     try:
         from backend.models.chat_history import ChatHistory
-        from backend.schemas.chat_history import ChatHistorySchema
+        from backend.services.ai_service import AIService
         
         # Security check: Patients can only fetch their own logs.
         if g.current_user.role == 'patient':
@@ -89,8 +89,8 @@ def get_chat_history(patient_id):
 
         # Retrieve logs ordered by created_at ascending
         logs = ChatHistory.query.filter_by(patient_id=patient_id).order_by(ChatHistory.created_at.asc()).all()
-        schema = ChatHistorySchema(many=True)
-        return jsonify(schema.dump(logs)), 200
+        enriched = AIService.enrich_chat_history(patient_id=patient_id, logs=logs)
+        return jsonify(enriched), 200
         
     except Exception as e:
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500

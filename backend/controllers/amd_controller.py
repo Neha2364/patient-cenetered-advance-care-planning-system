@@ -1,7 +1,9 @@
-from flask import request, jsonify, g, redirect
+from flask import request, jsonify, g, redirect, send_file
+from io import BytesIO
 from backend.services.amd_service import AMDService
 from backend.services.patient_service import PatientService
 from backend.services.audit_service import AuditService
+from backend.services.storage_service import StorageService
 from backend.schemas.amd import AMDGenerateRequestSchema, GeneratedAMDSchema
 from backend.utils.auth_helpers import token_required, role_required
 from marshmallow import ValidationError
@@ -47,7 +49,7 @@ def generate_amd():
 @token_required
 @role_required(['patient', 'doctor', 'admin'])
 def download_amd(patient_id, amd_id=None):
-    """Download or redirect to the latest generated active AMD PDF (GET /api/amd/download/<patient_id>)."""
+    """Download or stream the generated AMD PDF (GET /api/amd/download/<patient_id>)."""
     try:
         patient = PatientService.get_patient(patient_id)
         if not patient:
@@ -69,12 +71,28 @@ def download_amd(patient_id, amd_id=None):
             remarks=f"Downloaded/Accessed PDF document '{latest_amd.pdf_name}'."
         )
 
-        # Redirect the client directly to the Supabase storage public link
-        # If client expects JSON, we can return JSON metadata instead
+        # If client explicitly requests JSON metadata, return it with a fresh signed URL
         if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
-            return jsonify(amd_metadata_schema.dump(latest_amd)), 200
-            
-        return redirect(latest_amd.pdf_url)
+            data = amd_metadata_schema.dump(latest_amd)
+            try:
+                data['pdf_url'] = StorageService.create_signed_url(latest_amd.storage_path, expires_in=3600)
+            except Exception:
+                pass
+            return jsonify(data), 200
+
+        # Stream binary PDF directly to the client (avoids public bucket / CORS issues)
+        try:
+            pdf_bytes = StorageService.download_pdf(latest_amd.storage_path)
+            return send_file(
+                BytesIO(pdf_bytes),
+                mimetype='application/pdf',
+                as_attachment=True,
+                download_name=latest_amd.pdf_name
+            )
+        except Exception:
+            # Fallback to redirecting to a fresh signed URL
+            signed_url = StorageService.create_signed_url(latest_amd.storage_path, expires_in=3600)
+            return redirect(signed_url)
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500

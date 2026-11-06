@@ -15,3 +15,8 @@ class ChatHistorySchema(ma.SQLAlchemyAutoSchema):
     session_id = fields.Str(required=True)
     user_message = fields.Str(required=True)
     bot_response = fields.Str(required=True)
+    question_number = fields.Int(dump_only=True, allow_none=True)
+    question = fields.Str(dump_only=True, allow_none=True)
+    options = fields.List(fields.Str(), dump_only=True, allow_none=True)
+    status = fields.Str(dump_only=True, allow_none=True)
+    language = fields.Str(dump_only=True, allow_none=True)

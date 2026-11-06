@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   ClipboardList,
@@ -14,6 +14,8 @@ import {
   FilePlus2,
   Circle,
   CheckCircle2,
+  AlertCircle,
+  HelpCircle,
   Mic,
   Send,
   Menu,
@@ -25,8 +27,16 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { authService, patientService, chatService } from "@/lib/api";
-import { ACP_SECTIONS, completedSectionKeys, nextAcpSection, type AcpSectionKey } from "@/lib/acp-workflow";
+import { authService, patientService, chatService, aiService } from "@/lib/api";
+import {
+  ACP_SECTIONS,
+  completedSectionKeys,
+  nextAcpSection,
+  getSectionStatus,
+  getSectionProgress,
+  getOverallProgress,
+  type AcpSectionKey,
+} from "@/lib/acp-workflow";
 
 export const Route = createFileRoute("/patient-dashboard/")({
   head: () => ({
@@ -83,19 +93,19 @@ function PatientDashboard() {
   }, [profile, currentUser]);
 
   const patientSummary = useMemo(() => {
+    const overallProgress = getOverallProgress(profile, acp, dhrs);
     const completedSections = completedSectionKeys(profile, acp, dhrs);
-    const completionPercent = Math.round((completedSections.length / ACP_SECTIONS.length) * 100);
-    const isCompleted = completedSections.length === ACP_SECTIONS.length;
+    const isCompleted = Boolean(acp?.is_completed);
     const docsGenerated = acp?.amd_generated ? 1 : 0;
     const sectionsRemaining = ACP_SECTIONS.length - completedSections.length;
     
     return [
       {
         title: "ACP Completion",
-        value: `${completionPercent}%`,
-        caption: isCompleted ? "ACP Completed" : "Start your ACP journey",
+        value: `${overallProgress}%`,
+        caption: isCompleted ? "ACP Completed" : (overallProgress > 0 ? "In Progress" : "Start your ACP journey"),
         icon: ClipboardList,
-        progress: completionPercent,
+        progress: overallProgress,
       },
       {
         title: "Documents Generated",
@@ -241,17 +251,118 @@ function SummaryCard({
   );
 }
 
-function ProgressTracker({ profile, acp, dhrs, onStart, onSelect }: { profile: any; acp: any; dhrs: any[]; onStart: () => void; onSelect: (section: AcpSectionKey) => void }) {
+function ProgressTracker({
+  profile,
+  acp,
+  dhrs,
+  onStart,
+  onSelect,
+}: {
+  profile: any;
+  acp: any;
+  dhrs: any[];
+  onStart: () => void;
+  onSelect: (section: AcpSectionKey) => void;
+}) {
   const sections = ACP_SECTIONS;
   const completed = new Set(completedSectionKeys(profile, acp, dhrs));
-  const totalQuestions = sections.reduce((sum, section) => sum + section.questions, 0);
+
+  // Check if any life-sustaining directives remain unresolved
+  const hasUnresolvedDecisions = acp && (
+    (acp.cpr_preference === "NOT SPECIFIED" && (acp.ventilator_preference !== "NOT SPECIFIED" || acp.dialysis_preference !== "NOT SPECIFIED")) ||
+    (acp.ventilator_preference === "NOT SPECIFIED" && (acp.cpr_preference !== "NOT SPECIFIED" || acp.dialysis_preference !== "NOT SPECIFIED")) ||
+    (acp.dialysis_preference === "NOT SPECIFIED" && (acp.cpr_preference !== "NOT SPECIFIED" || acp.ventilator_preference !== "NOT SPECIFIED"))
+  );
+
   return (
     <MotionCard className="p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-6">
-        <div><h2 className="text-lg font-bold text-foreground">ACP Progress Tracker</h2><p className="mt-1 text-xs text-muted-foreground">{sections.length} sections • {totalQuestions} questions total</p></div>
-        <Button onClick={onStart} className="h-10 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"><Sparkles className="mr-2 h-4 w-4" /> {completed.size > 0 ? "Resume ACP" : "Start ACP"}</Button>
+        <div>
+          <h2 className="text-lg font-bold text-foreground">ACP Progress Tracker</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {sections.length} clinical sections • progress reflects your saved ACP choices • Shared with AI chatbot
+          </p>
+        </div>
+        <Button
+          onClick={onStart}
+          className="h-10 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          <Sparkles className="mr-2 h-4 w-4" /> {completed.size > 0 ? "Resume ACP" : "Start ACP"}
+        </Button>
       </div>
-      <div className="divide-y divide-border">{sections.map((section, index) => <motion.button key={section.key} type="button" onClick={() => onSelect(section.key)} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: 0.05 * index }} whileHover={{ backgroundColor: "rgba(15,157,154,0.04)" }} className="group flex w-full items-center gap-4 px-6 py-4 text-left"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-border bg-surface text-sm font-semibold text-muted-foreground">{index + 1}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-sm font-semibold text-foreground">{section.title}</span><Badge className={completed.has(section.key) ? "rounded-full border border-primary/25 bg-primary/10 px-2 py-0 text-[10px] font-semibold text-primary" : "rounded-full border border-warning/25 bg-warning/10 px-2 py-0 text-[10px] font-semibold text-warning"}>{completed.has(section.key) ? "Completed" : "Pending"}</Badge></div><div className="mt-2 flex items-center gap-3"><Progress value={completed.has(section.key) ? 100 : 0} className="h-1.5 w-40" /><span className="text-[11px] text-muted-foreground">{section.questions} questions</span></div></div><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" /></motion.button>)}</div>
+
+      {hasUnresolvedDecisions && (
+        <div className="flex items-center gap-2.5 border-b border-warning/20 bg-warning/5 px-6 py-2.5 text-xs text-warning">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>
+            You have life-sustaining treatment decisions marked as unsure or pending. You can revisit them anytime.
+          </span>
+        </div>
+      )}
+
+      <div className="divide-y divide-border">
+        {sections.map((section, index) => {
+          const status = getSectionStatus(section.key, profile, acp, dhrs);
+          const progress = getSectionProgress(section.key, profile, acp, dhrs);
+
+          const badgeConfig = {
+            completed: {
+              label: "Completed",
+              className: "border-success/30 bg-success/10 text-success",
+            },
+            in_progress: {
+              label: "In Progress",
+              className: "border-primary/30 bg-primary/10 text-primary",
+            },
+            pending: {
+              label: "Pending",
+              className: "border-border bg-surface text-muted-foreground",
+            },
+          }[status];
+
+          return (
+            <motion.button
+              key={section.key}
+              type="button"
+              onClick={() => onSelect(section.key)}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.05 * index }}
+              whileHover={{ backgroundColor: "rgba(15,157,154,0.04)" }}
+              className="group flex w-full items-center gap-4 px-6 py-4 text-left transition"
+            >
+              <div
+                className={cn(
+                  "grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold",
+                  status === "completed"
+                    ? "bg-primary text-primary-foreground"
+                    : status === "in_progress"
+                      ? "border-2 border-primary text-primary"
+                      : "border border-border bg-surface text-muted-foreground"
+                )}
+              >
+                {status === "completed" ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {section.title}
+                  </span>
+                  <Badge className={cn("rounded-full border px-2 py-0 text-[10px] font-semibold", badgeConfig.className)}>
+                    {badgeConfig.label}
+                  </Badge>
+                </div>
+                <div className="mt-2 flex items-center gap-3">
+                  <Progress value={progress} className="h-1.5 w-40" />
+                  <span className="text-[11px] font-medium text-muted-foreground">{progress}%</span>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </motion.button>
+          );
+        })}
+      </div>
     </MotionCard>
   );
 }
@@ -331,31 +442,69 @@ function TimelineCard({ patientTimeline }: { patientTimeline: any[] }) {
 }
 
 function ChatCard({ patientId }: { patientId?: number }) {
-  const { data: history } = useQuery({
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const { data: activeSessionResp } = useQuery({
+    queryKey: ["activeAiSession", patientId],
+    queryFn: aiService.getActiveSession,
+    enabled: !!patientId,
+  });
+  const activeSession = activeSessionResp?.session;
+
+  const { data: history = [] } = useQuery({
     queryKey: ["chatHistory", patientId],
     queryFn: () => chatService.getHistory(patientId!),
     enabled: !!patientId,
   });
 
-  const [draft, setDraft] = useState("");
-  
-  const messages = history || [
-    {
-      from: "bot",
-      text: "Welcome to ACP Care. When you're ready, we'll begin with your personal information to help draft your Advance Care Plan.",
+  const formattedMessages = useMemo(() => {
+    if (!history || history.length === 0) {
+      return [
+        {
+          from: "bot",
+          text: activeSession?.question
+            ? `Q${activeSession.current_question || 1}: ${activeSession.question}`
+            : "Welcome to ACP Care. When you're ready, we'll begin with your personal information to help draft your Advance Care Plan.",
+        },
+      ];
     }
-  ];
+    return history.flatMap((item: any) => [
+      { from: "user", text: item.user_message },
+      { from: "bot", text: item.bot_response },
+    ]);
+  }, [history, activeSession]);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!draft.trim() || !patientId) return;
+  const handleSendMessage = async (textToSend: string) => {
+    const text = textToSend.trim();
+    if (!text || !patientId || isSending) return;
+    setIsSending(true);
     try {
-      await chatService.processChat({ patient_id: patientId, message: draft });
+      let sessionId = activeSession?.session_id;
+      if (!sessionId) {
+        const created = await aiService.createSession("en");
+        sessionId = created.session_id;
+      }
+      await aiService.sendMessage(sessionId, text);
       setDraft("");
-    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ["chatHistory", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["activeAiSession", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patientAcp", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patientProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["patientDhrs", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patientAuditLogs", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["aiDoctorDashboard", patientId] });
+    } catch (err: any) {
       console.error(err);
+    } finally {
+      setIsSending(false);
     }
   };
+
+  const currentQNum = activeSession?.current_question;
+  const currentQText = activeSession?.question;
+  const currentOptions = activeSession?.options;
 
   return (
     <MotionCard className="p-0">
@@ -367,41 +516,105 @@ function ChatCard({ patientId }: { patientId?: number }) {
           <div>
             <div className="text-sm font-bold text-foreground">ACP Assistant</div>
             <div className="text-[11px] text-muted-foreground">
-              Current Section · <span className="text-primary">Not started</span>
+              {activeSession?.is_completed ? (
+                <span className="font-medium text-success">Questionnaire Completed</span>
+              ) : currentQNum ? (
+                <span>
+                  Question {currentQNum} of 20 · <span className="font-medium text-primary">Active</span>
+                </span>
+              ) : (
+                <span>Questionnaire · <span className="text-primary">Ready</span></span>
+              )}
             </div>
           </div>
         </div>
-        <Badge variant="outline" className="rounded-full border-primary/25 bg-primary/5 text-[10px] font-semibold text-primary">
-          Ready
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/patient-dashboard/chat"
+            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+          >
+            Full Assistant <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+          <Badge
+            variant="outline"
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+              activeSession?.is_completed
+                ? "border-success/30 bg-success/10 text-success"
+                : "border-primary/25 bg-primary/5 text-primary"
+            )}
+          >
+            {activeSession?.is_completed ? "Completed" : "Ready"}
+          </Badge>
+        </div>
       </div>
 
-      <div className="max-h-[360px] space-y-4 overflow-y-auto px-5 py-6">
-        {messages.map((m: any, i: number) => (
+      {/* Active Question Prompt & Choice Pills if session active */}
+      {!activeSession?.is_completed && currentQText && (
+        <div className="border-b border-primary/15 bg-primary/5 p-4">
+          <div className="flex items-start gap-2.5">
+            <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-foreground">
+                Q{currentQNum}: {currentQText}
+              </p>
+              {currentOptions && currentOptions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {currentOptions.map((opt: string) => (
+                    <Button
+                      key={opt}
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleSendMessage(opt)}
+                      disabled={isSending}
+                      className="h-7 rounded-lg border border-border bg-white text-[11px] font-medium shadow-2xs hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      {opt}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-h-[320px] space-y-4 overflow-y-auto px-5 py-5">
+        {formattedMessages.map((m: any, i: number) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
+            transition={{ delay: i * 0.04 }}
             className={cn("flex", m.from === "user" ? "justify-end" : "justify-start")}
           >
             <div
               className={cn(
-                "max-w-[78%] rounded-[20px] px-4 py-3 text-sm leading-relaxed shadow-sm",
+                "max-w-[80%] rounded-[20px] px-4 py-3 text-sm leading-relaxed shadow-sm",
                 m.from === "user"
                   ? "rounded-br-md bg-primary text-primary-foreground"
-                  : "rounded-bl-md bg-surface text-foreground",
+                  : "rounded-bl-md bg-surface text-foreground"
               )}
             >
               {m.text || m.message}
             </div>
           </motion.div>
         ))}
+        {isSending && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-block h-2 w-2 animate-ping rounded-full bg-primary" />
+            <span>Recording answer in care plan…</span>
+          </div>
+        )}
       </div>
 
       <div className="border-t border-border p-4">
         <form
-          onSubmit={handleSend}
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage(draft);
+          }}
           className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2"
         >
           <button
@@ -414,19 +627,25 @@ function ChatCard({ patientId }: { patientId?: number }) {
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Type your response or use the microphone..."
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={
+              activeSession?.is_completed
+                ? "Questionnaire completed. Click 'Full Assistant' to ask questions…"
+                : "Type your answer or click a choice above…"
+            }
+            disabled={isSending}
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-60"
           />
           <button
             type="submit"
-            className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:scale-105 hover:bg-primary/90"
+            disabled={!draft.trim() || isSending}
+            className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:scale-105 hover:bg-primary/90 disabled:opacity-40"
             aria-label="Send"
           >
             <Send className="h-4 w-4" />
           </button>
         </form>
         <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          Responses are securely stored and encrypted end-to-end.
+          Responses update your clinical care plan and progress tracker in real time.
         </p>
       </div>
     </MotionCard>

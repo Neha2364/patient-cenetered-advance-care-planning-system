@@ -7,6 +7,8 @@ class WitnessInputSchema(Schema):
     name = fields.Str(required=True)
     email = fields.Email(required=True)
     mobile = fields.Str(required=True)
+    address = fields.Str(load_default=None, allow_none=True)
+    government_id = fields.Str(load_default=None, allow_none=True)
 
     @validates('mobile')
     def validate_mobile(self, value):

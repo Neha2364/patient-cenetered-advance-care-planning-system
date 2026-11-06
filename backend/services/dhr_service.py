@@ -74,7 +74,8 @@ class DHRService:
             'signing_address', 'preference_order'
         ]:
             if field in data:
-                setattr(dhr, field, data[field])
+                value = data[field]
+                setattr(dhr, field, value)
 
         db.session.commit()
 
