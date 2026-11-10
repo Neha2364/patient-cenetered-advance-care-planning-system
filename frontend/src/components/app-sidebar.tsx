@@ -42,9 +42,22 @@ const adminNav: NavItem[] = [
   { title: "Account Settings", url: "/admin-dashboard/settings", icon: Settings },
 ];
 
-export function BrandLogo({ compact = false }: { compact?: boolean }) {
+export function BrandLogo({
+  compact = false,
+  role,
+}: {
+  compact?: boolean;
+  role?: "patient" | "doctor" | "admin";
+}) {
+  const target =
+    role === "doctor"
+      ? "/doctor-dashboard"
+      : role === "admin"
+        ? "/admin-dashboard"
+        : "/patient-dashboard";
+
   return (
-    <Link to="/" className="flex items-center gap-3">
+    <Link to={target} className="flex items-center gap-3">
       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-gradient text-white shadow-md">
         <HeartPulse className="h-5 w-5" />
       </div>
@@ -74,7 +87,7 @@ export function AppSidebar({
   return (
     <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-border bg-white lg:flex">
       <div className="px-5 pb-4 pt-6">
-        <BrandLogo />
+        <BrandLogo role={role} />
       </div>
 
       <div className="mx-4 mb-4 rounded-2xl border border-border bg-surface p-3">
@@ -119,7 +132,7 @@ export function AppSidebar({
       <div className="mt-auto px-3 pb-6 pt-4">
         <div className="mx-1 mb-3 h-px bg-border" />
         <Link
-          to="/"
+          to={role === "doctor" ? "/doctor-login" : role === "admin" ? "/admin-login" : "/"}
           onClick={() => authService.logout()}
           className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/5 hover:text-destructive"
         >

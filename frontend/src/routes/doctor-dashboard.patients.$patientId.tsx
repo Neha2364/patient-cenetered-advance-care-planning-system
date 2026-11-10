@@ -121,6 +121,7 @@ function PatientAcpDetailsPage() {
   const patient = data.patient;
   const acp = data.acp_preferences;
   const dhrs = (data.dhrs || []).filter((dhr: any) => !(dhr.preference_order > 1 && acp?.alternate_dhr_appointed === false));
+  const progress = data.progress;
 
   // Calculate completion percentage based on real DB status
   const sectionStatuses: Record<AcpSectionKey, string> = {
@@ -133,12 +134,38 @@ function PatientAcpDetailsPage() {
   };
 
   const completedCount = Object.values(sectionStatuses).filter((s) => s === "completed").length;
-  const completionPercentage = acp?.is_completed
-    ? 100
-    : Math.round((completedCount / ACP_SECTIONS.length) * 100);
+  const completionPercentage = typeof progress?.completion_percentage === "number"
+    ? progress.completion_percentage
+    : (acp?.is_completed
+      ? 100
+      : Math.round((completedCount / ACP_SECTIONS.length) * 100));
 
-  const reviewStatus = acp?.review_status || (acp ? "In Progress" : "Pending");
-  const priority = reviewStatus === "Pending Review" ? "High" : acp?.is_completed ? "Medium" : "Low";
+  const status: string = progress?.status || (
+    acp?.review_status === "Reviewed"
+      ? "Reviewed"
+      : (acp?.is_completed || acp?.completed_at
+        ? "Pending Review"
+        : (completionPercentage === 100
+          ? "Completed – Not Submitted"
+          : (completionPercentage === 0 ? "Not Started" : "In Progress")))
+  );
+
+  const statusBadgeStyle = (st: string) => {
+    switch (st) {
+      case "Reviewed":
+        return "border-emerald-500/25 bg-emerald-500/10 text-emerald-600";
+      case "Pending Review":
+        return "border-amber-500/25 bg-amber-500/10 text-amber-600";
+      case "Completed – Not Submitted":
+        return "border-blue-500/25 bg-blue-500/10 text-blue-600";
+      case "In Progress":
+        return "border-sky-500/25 bg-sky-500/10 text-sky-600";
+      case "Not Started":
+      default:
+        return "border-border bg-surface text-muted-foreground";
+    }
+  };
+
   const lastUpdatedRaw = acp?.updated_at || patient?.updated_at || patient?.created_at;
   const lastUpdatedFormatted = lastUpdatedRaw
     ? new Date(lastUpdatedRaw).toLocaleString("en-US", {
@@ -187,26 +214,10 @@ function PatientAcpDetailsPage() {
                   <Badge
                     className={cn(
                       "rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-                      reviewStatus === "Reviewed"
-                        ? "border-success/30 bg-success/10 text-success"
-                        : reviewStatus === "Pending Review"
-                          ? "border-warning/30 bg-warning/10 text-warning"
-                          : "border-border bg-surface text-muted-foreground"
+                      statusBadgeStyle(status)
                     )}
                   >
-                    {reviewStatus}
-                  </Badge>
-                  <Badge
-                    className={cn(
-                      "rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-                      priority === "High"
-                        ? "border-danger/30 bg-danger/10 text-danger"
-                        : priority === "Medium"
-                          ? "border-warning/30 bg-warning/10 text-warning"
-                          : "border-border bg-surface text-muted-foreground"
-                    )}
-                  >
-                    {priority} Priority
+                    {status}
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -226,24 +237,24 @@ function PatientAcpDetailsPage() {
 
             {/* Doctor Review Actions */}
             <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center lg:flex-col lg:items-end">
-              {reviewStatus === "Pending Review" && (
+              {status === "Pending Review" && (
                 <Button
                   onClick={() => reviewMutation.mutate("Reviewed")}
                   disabled={reviewMutation.isPending}
-                  className="rounded-xl bg-success text-white shadow-sm hover:bg-success/90"
+                  className="rounded-xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
                 >
                   {reviewMutation.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <CheckCheck className="mr-2 h-4 w-4" />
                   )}
-                  Approve & Mark as Reviewed
+                  Approve & Acknowledge ACP
                 </Button>
               )}
-              {reviewStatus === "Reviewed" && (
-                <div className="flex items-center gap-2 text-xs font-medium text-success">
+              {status === "Reviewed" && (
+                <div className="flex items-center gap-2 text-xs font-medium text-emerald-600">
                   <CheckCircle2 className="h-4 w-4" />
-                  Clinically Reviewed
+                  Clinically Reviewed & Acknowledged
                   <Button
                     variant="outline"
                     size="sm"
@@ -253,6 +264,11 @@ function PatientAcpDetailsPage() {
                   >
                     Re-open Review
                   </Button>
+                </div>
+              )}
+              {status !== "Pending Review" && status !== "Reviewed" && (
+                <div className="rounded-xl border border-dashed border-border bg-surface/50 px-3 py-1.5 text-xs text-muted-foreground">
+                  Draft record ({status}) · Review eligible after patient submission
                 </div>
               )}
             </div>

@@ -24,9 +24,10 @@ from backend.controllers.amd_controller import (
 )
 from backend.controllers.dashboard_controller import (
     doctor_get_patients, doctor_get_patient_details, 
-    doctor_get_patient_amd_history, doctor_review_patient_acp
+    doctor_get_patient_amd_history, doctor_review_patient_acp,
+    doctor_get_analytics
 )
-from backend.controllers.auth_controller import register, login
+from backend.controllers.auth_controller import register, login, change_password
 from backend.controllers.ai_controller import (
     create_ai_session,
     chat_ai,
@@ -50,6 +51,8 @@ from backend.controllers.admin_controller import (
 # Auth APIs
 api_bp.add_url_rule('/auth/register', view_func=register, methods=['POST'])
 api_bp.add_url_rule('/auth/login', view_func=login, methods=['POST'])
+api_bp.add_url_rule('/auth/change-password', view_func=change_password, methods=['POST'])
+api_bp.add_url_rule('/doctor/change-password', view_func=change_password, methods=['POST'])
 
 # Patient APIs
 api_bp.add_url_rule('/patients', view_func=create_patient, methods=['POST'])
@@ -103,6 +106,7 @@ api_bp.add_url_rule('/doctor/patients', view_func=doctor_get_patients, methods=[
 api_bp.add_url_rule('/doctor/patient/<int:id>', view_func=doctor_get_patient_details, methods=['GET'])
 api_bp.add_url_rule('/doctor/amd/<int:patient_id>', view_func=doctor_get_patient_amd_history, methods=['GET'])
 api_bp.add_url_rule('/doctor/review/<int:patient_id>', view_func=doctor_review_patient_acp, methods=['PUT'])
+api_bp.add_url_rule('/doctor/analytics', view_func=doctor_get_analytics, methods=['GET'])
 
 # Admin APIs (admin role required on all routes)
 api_bp.add_url_rule('/admin/dashboard', view_func=admin_get_dashboard, methods=['GET'])

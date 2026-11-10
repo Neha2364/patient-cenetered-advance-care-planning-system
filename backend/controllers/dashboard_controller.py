@@ -9,6 +9,7 @@ from backend.schemas.acp_preference import ACPPreferenceSchema
 from backend.schemas.dhr import DHRSchema
 from backend.schemas.amd import GeneratedAMDSchema
 from backend.utils.auth_helpers import token_required, role_required
+from backend.utils.acp_calculator import calculate_patient_acp_progress
 
 patient_schema = PatientSchema()
 patient_list_schema = PatientSchema(many=True)
@@ -42,20 +43,27 @@ def doctor_get_patients():
             amd_generated=amd_generated
         )
         
-        # Serialize list of patient details
+        # Serialize list of patient details with real-time calculated ACP progress
         results = []
         for pat in patients:
             pref = pat.acp_preferences
+            progress = calculate_patient_acp_progress(pat)
+            
             results.append({
                 'patient_id': pat.patient_id,
-                'full_name': pat.user.full_name,
-                'email': pat.user.email,
+                'full_name': pat.user.full_name if pat.user else 'Unknown Patient',
+                'email': pat.user.email if pat.user else '',
                 'phone': pat.phone,
                 'age': pat.age,
                 'preferred_language': pat.preferred_language,
-                'is_completed': pref.is_completed if pref else False,
-                'review_status': pref.review_status if pref else 'Pending Review',
-                'amd_generated': pref.amd_generated if pref else False
+                'is_completed': progress['is_completed'],
+                'completion_percentage': progress['completion_percentage'],
+                'section_progress': progress['section_progress'],
+                'status': progress['status'],
+                'review_status': progress['status'],
+                'last_updated': progress['last_updated'],
+                'amd_generated': pref.amd_generated if pref else False,
+                'reviewed_by_doctor': pref.reviewed_by_doctor if pref else None
             })
             
         return jsonify(results), 200
@@ -74,14 +82,27 @@ def doctor_get_patient_details(id):
 
         acp = ACPService.get_preferences(id)
         dhrs = DHRService.get_patient_dhrs(id)
+        progress = calculate_patient_acp_progress(patient)
 
         response_data = {
             'patient': patient_schema.dump(patient),
             'acp_preferences': acp_schema.dump(acp) if acp else None,
-            'dhrs': dhr_list_schema.dump(dhrs)
+            'dhrs': dhr_list_schema.dump(dhrs),
+            'progress': progress
         }
         return jsonify(response_data), 200
 
+    except Exception as e:
+        return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
+
+@token_required
+@role_required(['doctor', 'admin'])
+def doctor_get_analytics():
+    """Retrieve comprehensive analytics and metrics for the doctor portal (GET /doctor/analytics)."""
+    try:
+        doctor_id = g.current_user.id if g.current_user else None
+        analytics = DashboardService.get_doctor_dashboard_analytics(doctor_id=doctor_id)
+        return jsonify(analytics), 200
     except Exception as e:
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
 
@@ -137,5 +158,3 @@ def doctor_review_patient_acp(patient_id):
         return jsonify({'error': 'Bad Request', 'message': str(err)}), 400
     except Exception as e:
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
-
-

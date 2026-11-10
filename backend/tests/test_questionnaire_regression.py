@@ -94,12 +94,11 @@ class QuestionnaireRegressionTestCase(unittest.TestCase):
         db.session.commit()
 
         flow = [
-            # Section 1: Personal Information (Q1..Q6)
+            # Section 1: Personal Information (Q1..Q4, Q6 - Language question Q5 removed from chatbot)
             (1, "Sunil Kumar", 2),
             (2, "15/05/1980", 3),
             (3, "Male", 4),
-            (4, "9876543210", 5),
-            (5, "English", 6),
+            (4, "9876543210", 6),
             (6, "123 MG Road, Bengaluru", 7),
             # Section 2: Medical Treatment Preferences (Q7..Q18)
             (7, "Asthma", 8),
@@ -187,17 +186,18 @@ class QuestionnaireRegressionTestCase(unittest.TestCase):
         self.assertEqual(pref.last_rites, "No specific wishes")
 
     def test_2_no_duplicate_questions(self):
-        """2. Questionnaire has stable, unique question IDs 1..44 without duplicates."""
+        """2. Questionnaire has stable, unique question IDs (excluding removed language question Q5) without duplicates."""
         meta_en = AIService.QUESTIONNAIRE_METADATA["en"]
         meta_kn = AIService.QUESTIONNAIRE_METADATA["kn"]
 
-        self.assertEqual(len(meta_en), 44)
-        self.assertEqual(len(meta_kn), 44)
-        self.assertEqual(set(meta_en.keys()), set(range(1, 45)))
-        self.assertEqual(set(meta_kn.keys()), set(range(1, 45)))
+        expected_keys = set(range(1, 45)) - {5}
+        self.assertEqual(len(meta_en), 43)
+        self.assertEqual(len(meta_kn), 43)
+        self.assertEqual(set(meta_en.keys()), expected_keys)
+        self.assertEqual(set(meta_kn.keys()), expected_keys)
 
         # Ensure all English prompts are unique
-        questions_en = [meta_en[i]["question"] for i in range(1, 45)]
+        questions_en = [meta_en[i]["question"] for i in expected_keys]
         self.assertEqual(len(questions_en), len(set(questions_en)))
 
     @patch("requests.request")

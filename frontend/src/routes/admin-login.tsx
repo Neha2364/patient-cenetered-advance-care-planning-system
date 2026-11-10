@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   ShieldCheck,
@@ -67,6 +67,13 @@ function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const user = authService.getCurrentUser();
+    if (user && user.role === "admin") {
+      navigate({ to: "/admin-dashboard", replace: true });
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

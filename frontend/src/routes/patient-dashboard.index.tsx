@@ -98,7 +98,7 @@ function PatientDashboard() {
     const isCompleted = Boolean(acp?.is_completed);
     const docsGenerated = acp?.amd_generated ? 1 : 0;
     const sectionsRemaining = ACP_SECTIONS.length - completedSections.length;
-    
+
     return [
       {
         title: "ACP Completion",
@@ -147,22 +147,22 @@ function PatientDashboard() {
     <>
       <PageHeader patientUser={patientUser} />
 
-          <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {patientSummary.map((s, i) => (
-              <SummaryCard key={s.title} {...s} delay={i * 0.04} />
-            ))}
-          </section>
+      <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {patientSummary.map((s, i) => (
+          <SummaryCard key={s.title} {...s} delay={i * 0.04} />
+        ))}
+      </section>
 
-          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="flex flex-col gap-6">
-              <ProgressTracker profile={profile} acp={acp} dhrs={dhrs} onStart={() => navigate({ to: "/patient-dashboard/acp/$section", params: { section: nextAcpSection(profile, acp, dhrs) } })} onSelect={(section) => navigate({ to: "/patient-dashboard/acp/$section", params: { section } })} />
-              <ChatCard patientId={patientId} />
-            </div>
-            <aside className="flex flex-col gap-6">
-              <DocumentsCard acp={acp} onOpen={() => navigate({ to: "/patient-dashboard/documents" })} />
-              <TimelineCard patientTimeline={patientTimeline} />
-            </aside>
-          </div>
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-6">
+          <ProgressTracker profile={profile} acp={acp} dhrs={dhrs} onStart={() => navigate({ to: "/patient-dashboard/acp/$section", params: { section: nextAcpSection(profile, acp, dhrs) } })} onSelect={(section) => navigate({ to: "/patient-dashboard/acp/$section", params: { section } })} />
+          <ChatCard patientId={patientId} profile={profile} />
+        </div>
+        <aside className="flex flex-col gap-6">
+          <DocumentsCard acp={acp} onOpen={() => navigate({ to: "/patient-dashboard/documents" })} />
+          <TimelineCard patientTimeline={patientTimeline} />
+        </aside>
+      </div>
     </>
   );
 }
@@ -441,7 +441,7 @@ function TimelineCard({ patientTimeline }: { patientTimeline: any[] }) {
   );
 }
 
-function ChatCard({ patientId }: { patientId?: number }) {
+function ChatCard({ patientId, profile }: { patientId?: number; profile?: any }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -483,7 +483,8 @@ function ChatCard({ patientId }: { patientId?: number }) {
     try {
       let sessionId = activeSession?.session_id;
       if (!sessionId) {
-        const created = await aiService.createSession("en");
+        const lang = profile?.preferred_language?.toLowerCase().includes("kannada") ? "kn" : "en";
+        const created = await aiService.createSession(lang);
         sessionId = created.session_id;
       }
       await aiService.sendMessage(sessionId, text);

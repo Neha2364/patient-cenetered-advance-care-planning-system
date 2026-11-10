@@ -11,6 +11,7 @@ class User(db.Model):
     email = db.Column(db.String(100), unique=True, nullable=False, index=True)
     role = db.Column(db.String(20), nullable=False, default='patient')  # patient, doctor, admin
     password_hash = db.Column(db.String(255), nullable=True)
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships

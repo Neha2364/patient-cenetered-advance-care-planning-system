@@ -23,6 +23,7 @@ import { Route as PatientDashboardChatRouteImport } from './routes/patient-dashb
 import { Route as DoctorDashboardSettingsRouteImport } from './routes/doctor-dashboard.settings'
 import { Route as DoctorDashboardReviewsRouteImport } from './routes/doctor-dashboard.reviews'
 import { Route as DoctorDashboardPatientsRouteImport } from './routes/doctor-dashboard.patients'
+import { Route as DoctorDashboardChangePasswordRouteImport } from './routes/doctor-dashboard.change-password'
 import { Route as DoctorDashboardAnalyticsRouteImport } from './routes/doctor-dashboard.analytics'
 import { Route as AdminDashboardSettingsRouteImport } from './routes/admin-dashboard.settings'
 import { Route as AdminDashboardPatientsRouteImport } from './routes/admin-dashboard.patients'
@@ -106,6 +107,12 @@ const DoctorDashboardPatientsRoute = DoctorDashboardPatientsRouteImport.update({
   path: '/patients',
   getParentRoute: () => DoctorDashboardRoute,
 } as any)
+const DoctorDashboardChangePasswordRoute =
+  DoctorDashboardChangePasswordRouteImport.update({
+    id: '/change-password',
+    path: '/change-password',
+    getParentRoute: () => DoctorDashboardRoute,
+  } as any)
 const DoctorDashboardAnalyticsRoute =
   DoctorDashboardAnalyticsRouteImport.update({
     id: '/analytics',
@@ -175,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/admin-dashboard/patients': typeof AdminDashboardPatientsRoute
   '/admin-dashboard/settings': typeof AdminDashboardSettingsRoute
   '/doctor-dashboard/analytics': typeof DoctorDashboardAnalyticsRoute
+  '/doctor-dashboard/change-password': typeof DoctorDashboardChangePasswordRoute
   '/doctor-dashboard/patients': typeof DoctorDashboardPatientsRouteWithChildren
   '/doctor-dashboard/reviews': typeof DoctorDashboardReviewsRoute
   '/doctor-dashboard/settings': typeof DoctorDashboardSettingsRoute
@@ -199,6 +207,7 @@ export interface FileRoutesByTo {
   '/admin-dashboard/patients': typeof AdminDashboardPatientsRoute
   '/admin-dashboard/settings': typeof AdminDashboardSettingsRoute
   '/doctor-dashboard/analytics': typeof DoctorDashboardAnalyticsRoute
+  '/doctor-dashboard/change-password': typeof DoctorDashboardChangePasswordRoute
   '/doctor-dashboard/patients': typeof DoctorDashboardPatientsRouteWithChildren
   '/doctor-dashboard/reviews': typeof DoctorDashboardReviewsRoute
   '/doctor-dashboard/settings': typeof DoctorDashboardSettingsRoute
@@ -226,6 +235,7 @@ export interface FileRoutesById {
   '/admin-dashboard/patients': typeof AdminDashboardPatientsRoute
   '/admin-dashboard/settings': typeof AdminDashboardSettingsRoute
   '/doctor-dashboard/analytics': typeof DoctorDashboardAnalyticsRoute
+  '/doctor-dashboard/change-password': typeof DoctorDashboardChangePasswordRoute
   '/doctor-dashboard/patients': typeof DoctorDashboardPatientsRouteWithChildren
   '/doctor-dashboard/reviews': typeof DoctorDashboardReviewsRoute
   '/doctor-dashboard/settings': typeof DoctorDashboardSettingsRoute
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
     | '/admin-dashboard/patients'
     | '/admin-dashboard/settings'
     | '/doctor-dashboard/analytics'
+    | '/doctor-dashboard/change-password'
     | '/doctor-dashboard/patients'
     | '/doctor-dashboard/reviews'
     | '/doctor-dashboard/settings'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
     | '/admin-dashboard/patients'
     | '/admin-dashboard/settings'
     | '/doctor-dashboard/analytics'
+    | '/doctor-dashboard/change-password'
     | '/doctor-dashboard/patients'
     | '/doctor-dashboard/reviews'
     | '/doctor-dashboard/settings'
@@ -304,6 +316,7 @@ export interface FileRouteTypes {
     | '/admin-dashboard/patients'
     | '/admin-dashboard/settings'
     | '/doctor-dashboard/analytics'
+    | '/doctor-dashboard/change-password'
     | '/doctor-dashboard/patients'
     | '/doctor-dashboard/reviews'
     | '/doctor-dashboard/settings'
@@ -427,6 +440,13 @@ declare module '@tanstack/react-router' {
       path: '/patients'
       fullPath: '/doctor-dashboard/patients'
       preLoaderRoute: typeof DoctorDashboardPatientsRouteImport
+      parentRoute: typeof DoctorDashboardRoute
+    }
+    '/doctor-dashboard/change-password': {
+      id: '/doctor-dashboard/change-password'
+      path: '/change-password'
+      fullPath: '/doctor-dashboard/change-password'
+      preLoaderRoute: typeof DoctorDashboardChangePasswordRouteImport
       parentRoute: typeof DoctorDashboardRoute
     }
     '/doctor-dashboard/analytics': {
@@ -567,6 +587,7 @@ const DoctorDashboardPatientsRouteWithChildren =
 
 interface DoctorDashboardRouteChildren {
   DoctorDashboardAnalyticsRoute: typeof DoctorDashboardAnalyticsRoute
+  DoctorDashboardChangePasswordRoute: typeof DoctorDashboardChangePasswordRoute
   DoctorDashboardPatientsRoute: typeof DoctorDashboardPatientsRouteWithChildren
   DoctorDashboardReviewsRoute: typeof DoctorDashboardReviewsRoute
   DoctorDashboardSettingsRoute: typeof DoctorDashboardSettingsRoute
@@ -575,6 +596,7 @@ interface DoctorDashboardRouteChildren {
 
 const DoctorDashboardRouteChildren: DoctorDashboardRouteChildren = {
   DoctorDashboardAnalyticsRoute: DoctorDashboardAnalyticsRoute,
+  DoctorDashboardChangePasswordRoute: DoctorDashboardChangePasswordRoute,
   DoctorDashboardPatientsRoute: DoctorDashboardPatientsRouteWithChildren,
   DoctorDashboardReviewsRoute: DoctorDashboardReviewsRoute,
   DoctorDashboardSettingsRoute: DoctorDashboardSettingsRoute,

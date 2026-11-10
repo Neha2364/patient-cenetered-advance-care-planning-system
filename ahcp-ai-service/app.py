@@ -75,10 +75,10 @@ QUESTIONNAIRE = {
     4: {"key": "phone", "category": "Personal Information", "question": "What is your mobile phone number?", "type": "text"},
     5: {"key": "preferred_language", "category": "Personal Information", "question": "What language would you prefer for communication?", "type": "choice", "options": ["English", "Kannada"]},
     6: {"key": "current_address", "category": "Personal Information", "question": "What is your current residential address?", "type": "text"},
-    7: {"key": "chronic_conditions", "category": "Medical Treatment Preferences", "question": "Do you have any chronic medical conditions? (Please describe them, or answer None / No)", "type": "text", "options": None},
-    8: {"key": "serious_hospitalization", "category": "Medical Treatment Preferences", "question": "Have you ever had a serious hospitalization or major illness? (Please describe, or answer None / No)", "type": "text", "options": None},
-    9: {"key": "long_term_medications", "category": "Medical Treatment Preferences", "question": "What long-term medications do you currently take? (Please list them, or answer None / No)", "type": "text", "options": None},
-    10: {"key": "allergies", "category": "Medical Treatment Preferences", "question": "Do you have any known allergies to medications, food, or other substances? (Please list them, or answer None / No)", "type": "text", "options": None},
+    7: {"key": "chronic_conditions", "category": "Medical Treatment Preferences", "question": "Do you have any chronic medical conditions?", "type": "text", "options": None},
+    8: {"key": "serious_hospitalization", "category": "Medical Treatment Preferences", "question": "Have you ever had a serious hospitalization or major illness?", "type": "text", "options": None},
+    9: {"key": "long_term_medications", "category": "Medical Treatment Preferences", "question": "What long-term medications do you currently take?", "type": "text", "options": None},
+    10: {"key": "allergies", "category": "Medical Treatment Preferences", "question": "Do you have any known allergies to medications, food, or other substances?", "type": "text", "options": None},
     11: {"key": "cpr", "category": "Medical Treatment Preferences", "question": "If your heart stops beating, would you want Cardiopulmonary Resuscitation (CPR)?", "type": "choice", "options": ["Yes", "No", "Unsure"]},
     12: {"key": "ventilator", "category": "Medical Treatment Preferences", "question": "If you are unable to breathe on your own, would you want mechanical ventilation (a breathing machine / ventilator)?", "type": "choice", "options": ["Yes", "No", "Unsure"]},
     13: {"key": "dialysis", "category": "Medical Treatment Preferences", "question": "If your kidneys stop working, would you want kidney dialysis?", "type": "choice", "options": ["Yes", "No", "Unsure"]},
@@ -97,21 +97,21 @@ QUESTIONNAIRE = {
     26: {"key": "healthcare_decision_maker", "category": "Designated Healthcare Representative", "question": "Who would you like to appoint as your primary healthcare representative (healthcare proxy) to make decisions if you are unable to?", "type": "text"},
     27: {"key": "decision_maker_relationship", "category": "Designated Healthcare Representative", "question": "What is your relationship with this representative?", "type": "text"},
     28: {"key": "decision_maker_phone", "category": "Designated Healthcare Representative", "question": "What is your primary representative's mobile phone number?", "type": "text"},
-    29: {"key": "decision_maker_email", "category": "Designated Healthcare Representative", "question": "What is your primary representative's email address? (Optional; select 'Skip' if unavailable):", "type": "text", "options": ["Skip"]},
-    30: {"key": "decision_maker_address", "category": "Designated Healthcare Representative", "question": "What is your primary representative's residential address? (Optional; select 'Skip' if unavailable):", "type": "text", "options": ["Same as my address", "Skip"]},
+    29: {"key": "decision_maker_email", "category": "Designated Healthcare Representative", "question": "What is your primary representative's email address?", "type": "text", "options": None},
+    30: {"key": "decision_maker_address", "category": "Designated Healthcare Representative", "question": "What is your primary representative's residential address?", "type": "text", "options": ["Same as my address"]},
     31: {"key": "appoint_alternate_representative", "category": "Designated Healthcare Representative", "question": "Would you like to appoint an alternate healthcare representative in case your primary representative is unavailable or unable to act?", "type": "choice", "options": ["Yes", "No"]},
     32: {"key": "alternate_decision_maker", "category": "Designated Healthcare Representative", "question": "What is your alternate healthcare representative's full name?", "type": "text"},
     33: {"key": "alternate_decision_maker_relationship", "category": "Designated Healthcare Representative", "question": "What is your relationship with this alternate representative?", "type": "text"},
     34: {"key": "alternate_decision_maker_phone", "category": "Designated Healthcare Representative", "question": "What is your alternate representative's mobile phone number?", "type": "text"},
-    35: {"key": "alternate_decision_maker_email", "category": "Designated Healthcare Representative", "question": "What is your alternate representative's email address? (Optional; select 'Skip' if unavailable):", "type": "text", "options": ["Skip"]},
-    36: {"key": "alternate_decision_maker_address", "category": "Designated Healthcare Representative", "question": "What is your alternate representative's residential address? (Optional; select 'Skip' if unavailable):", "type": "text", "options": ["Same as my address", "Skip"]},
-    37: {"key": "organ_donation", "category": "Organ Donation", "question": "Would you like to donate your organs after death?", "type": "choice", "options": ["Yes", "No", "Unsure"]},
-    38: {"key": "body_donation", "category": "Organ Donation", "question": "In addition to organ donation, would you like to donate your body for medical education and research after death?", "type": "choice", "options": ["Yes", "No", "Unsure"]},
-    39: {"key": "last_rites", "category": "Organ Donation", "question": "Do you have any spiritual, cultural, or last rites / funeral wishes? (Optional; select 'Skip' if you have no specific wishes):", "type": "text", "options": ["No specific wishes", "Skip"]},
-    40: {"key": "permanent_address", "category": "Personal Information", "question": "What is your permanent residential address? (Select 'Same as current address' or 'Skip' if same as current address).", "type": "text", "options": ["Same as current address", "Skip"]},
+    35: {"key": "alternate_decision_maker_email", "category": "Designated Healthcare Representative", "question": "What is your alternate representative's email address?", "type": "text", "options": None},
+    36: {"key": "alternate_decision_maker_address", "category": "Designated Healthcare Representative", "question": "What is your alternate representative's residential address?", "type": "text", "options": ["Same as my address"]},
+    37: {"key": "organ_donation", "category": "Organ Donation", "question": "Would you like to donate your organs after death?", "type": "choice", "options": ["Yes", "No"]},
+    38: {"key": "body_donation", "category": "Organ Donation", "question": "In addition to organ donation, would you like to donate your body for medical education and research after death?", "type": "choice", "options": ["Yes", "No"]},
+    39: {"key": "last_rites", "category": "Organ Donation", "question": "Do you have any spiritual, cultural, or last rites / funeral wishes?", "type": "text", "options": ["No specific wishes", "Skip"]},
+    40: {"key": "permanent_address", "category": "Personal Information", "question": "What is your permanent residential address?", "type": "text", "options": ["Same as current address", "Skip"]},
     41: {"key": "government_id_type", "category": "Personal Information", "question": "What type of Government ID would you like to provide? (Optional)", "type": "choice", "options": ["Aadhaar", "Passport", "Driving License", "Voter ID", "Skip"]},
-    42: {"key": "government_id_number", "category": "Personal Information", "question": "Please enter your Government ID number (Optional; select 'Skip' if unavailable):", "type": "text", "options": ["Skip"]},
-    43: {"key": "municipality_panchayat", "category": "Personal Information", "question": "What is your Municipality or Gram Panchayat? (Optional; select 'Skip' if unavailable):", "type": "text", "options": ["Skip"]},
+    42: {"key": "government_id_number", "category": "Personal Information", "question": "Please enter your Government ID number", "type": "text", "options": ["Skip"]},
+    43: {"key": "municipality_panchayat", "category": "Personal Information", "question": "What is your Municipality or Gram Panchayat?", "type": "text", "options": ["Skip"]},
     44: {"key": "review", "category": "Confirmation & Review", "question": "Please review your complete Advance Care Plan below. When you are ready, confirm to finalize your record, or choose an option to make edits:", "type": "choice", "options": ["Confirm & Complete ACP", "Edit Personal Details", "Edit Medical Treatments", "Edit End-of-Life Wishes", "Edit Healthcare Representative", "Edit Donation Preferences"]},
 }
 
@@ -124,10 +124,10 @@ LANGUAGE_TEXT = {
         4: {"question": "What is your mobile phone number?", "options": None},
         5: {"question": "What language would you prefer for communication?", "options": ["English", "Kannada"]},
         6: {"question": "What is your current residential address?", "options": None},
-        7: {"question": "Do you have any chronic medical conditions? (Please describe them, or answer None / No)", "options": None},
-        8: {"question": "Have you ever had a serious hospitalization or major illness? (Please describe, or answer None / No)", "options": None},
-        9: {"question": "What long-term medications do you currently take? (Please list them, or answer None / No)", "options": None},
-        10: {"question": "Do you have any known allergies to medications, food, or other substances? (Please list them, or answer None / No)", "options": None},
+        7: {"question": "Do you have any chronic medical conditions?", "options": None},
+        8: {"question": "Have you ever had a serious hospitalization or major illness?", "options": None},
+        9: {"question": "What long-term medications do you currently take?", "options": None},
+        10: {"question": "Do you have any known allergies to medications, food, or other substances?", "options": None},
         11: {"question": "If your heart stops beating, would you want Cardiopulmonary Resuscitation (CPR)?", "options": ["Yes", "No", "Unsure"]},
         12: {"question": "If you are unable to breathe on your own, would you want mechanical ventilation (a breathing machine / ventilator)?", "options": ["Yes", "No", "Unsure"]},
         13: {"question": "If your kidneys stop working, would you want kidney dialysis?", "options": ["Yes", "No", "Unsure"]},
@@ -146,21 +146,21 @@ LANGUAGE_TEXT = {
         26: {"question": "Who would you like to appoint as your primary healthcare representative (healthcare proxy) to make decisions if you are unable to?", "options": None},
         27: {"question": "What is your relationship with this representative?", "options": None},
         28: {"question": "What is your primary representative's mobile phone number?", "options": None},
-        29: {"question": "What is your primary representative's email address? (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
-        30: {"question": "What is your primary representative's residential address? (Optional; select 'Skip' if unavailable):", "options": ["Same as my address", "Skip"]},
+        29: {"question": "What is your primary representative's email address?", "options": None},
+        30: {"question": "What is your primary representative's residential address?", "options": ["Same as my address"]},
         31: {"question": "Would you like to appoint an alternate healthcare representative in case your primary representative is unavailable or unable to act?", "options": ["Yes", "No"]},
         32: {"question": "What is your alternate healthcare representative's full name?", "options": None},
         33: {"question": "What is your relationship with this alternate representative?", "options": None},
         34: {"question": "What is your alternate representative's mobile phone number?", "options": None},
-        35: {"question": "What is your alternate representative's email address? (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
-        36: {"question": "What is your alternate representative's residential address? (Optional; select 'Skip' if unavailable):", "options": ["Same as my address", "Skip"]},
-        37: {"question": "Would you like to donate your organs after death?", "options": ["Yes", "No", "Unsure"]},
-        38: {"question": "In addition to organ donation, would you like to donate your body for medical education and research after death?", "options": ["Yes", "No", "Unsure"]},
-        39: {"question": "Do you have any spiritual, cultural, or last rites / funeral wishes? (Optional; select 'Skip' if you have no specific wishes):", "options": ["No specific wishes", "Skip"]},
-        40: {"question": "What is your permanent residential address? (Select 'Same as current address' or 'Skip' if same as current address).", "options": ["Same as current address", "Skip"]},
+        35: {"question": "What is your alternate representative's email address?", "options": None},
+        36: {"question": "What is your alternate representative's residential address?", "options": ["Same as my address"]},
+        37: {"question": "Would you like to donate your organs after death?", "options": ["Yes", "No"]},
+        38: {"question": "In addition to organ donation, would you like to donate your body for medical education and research after death?", "options": ["Yes", "No"]},
+        39: {"question": "Do you have any spiritual, cultural, or last rites / funeral wishes?", "options": ["No specific wishes", "Skip"]},
+        40: {"question": "What is your permanent residential address?", "options": ["Same as current address", "Skip"]},
         41: {"question": "What type of Government ID would you like to provide? (Optional)", "options": ["Aadhaar", "Passport", "Driving License", "Voter ID", "Skip"]},
-        42: {"question": "Please enter your Government ID number (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
-        43: {"question": "What is your Municipality or Gram Panchayat? (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
+        42: {"question": "Please enter your Government ID number", "options": ["Skip"]},
+        43: {"question": "What is your Municipality or Gram Panchayat?", "options": ["Skip"]},
         44: {"question": "Please review your complete Advance Care Plan below. When you are ready, confirm to finalize your record, or choose an option to make edits:", "options": ["Confirm & Complete ACP", "Edit Personal Details", "Edit Medical Treatments", "Edit End-of-Life Wishes", "Edit Healthcare Representative", "Edit Donation Preferences"]}
     },
     "kn": {
@@ -170,10 +170,10 @@ LANGUAGE_TEXT = {
         4: {"question": "ನಿಮ್ಮ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆ ಏನು?", "options": None},
         5: {"question": "ಸಂವಹನಕ್ಕಾಗಿ ನಿಮ್ಮ ಆದ್ಯತೆಯ ಭಾಷೆ ಯಾವುದು?", "options": ["English", "Kannada"]},
         6: {"question": "ನಿಮ್ಮ ಪ್ರಸ್ತುತ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": None},
-        7: {"question": "ನಿಮಗೆ ಯಾವುದೇ ದೀರ್ಘಕಾಲದ ವೈದ್ಯಕೀಯ ಕಾಯಿಲೆಗಳಿವೆಯೇ? (ದಯವಿಟ್ಟು ವಿವರಿಸಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
-        8: {"question": "ನೀವು ಎಂದಾದರೂ ಗಂಭೀರ ಕಾಯಿಲೆಯಿಂದ ಆಸ್ಪತ್ರೆಗೆ ದಾಖಲಾಗಿದ್ದೀರಾ ಅಥವಾ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಒಳಗಾಗಿದ್ದೀರಾ? (ದಯವಿಟ್ಟು ವಿವರಿಸಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
-        9: {"question": "ನೀವು ಪ್ರಸ್ತುತ ನಿಯಮಿತವಾಗಿ ತೆಗೆದುಕೊಳ್ಳುತ್ತಿರುವ ದೀರ್ಘಕಾಲದ ಔಷಧಿಗಳು ಯಾವುವು? (ದಯವಿಟ್ಟು ಪಟ್ಟಿ ಮಾಡಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
-        10: {"question": "ನಿಮಗೆ ಔಷಧಿಗಳು, ಆಹಾರ ಅಥವಾ ಇತರ ವಸ್ತುಗಳಿಂದ ಯಾವುದೇ ಅಲರ್ಜಿಗಳಿವೆಯೇ? (ದಯವಿಟ್ಟು ಪಟ್ಟಿ ಮಾಡಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
+        7: {"question": "ನಿಮಗೆ ಯಾವುದೇ ದೀರ್ಘಕಾಲದ ವೈದ್ಯಕೀಯ ಕಾಯಿಲೆಗಳಿವೆಯೇ?", "options": None},
+        8: {"question": "ನೀವು ಎಂದಾದರೂ ಗಂಭೀರ ಕಾಯಿಲೆಯಿಂದ ಆಸ್ಪತ್ರೆಗೆ ದಾಖಲಾಗಿದ್ದೀರಾ ಅಥವಾ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಒಳಗಾಗಿದ್ದೀರಾ?", "options": None},
+        9: {"question": "ನೀವು ಪ್ರಸ್ತುತ ನಿಯಮಿತವಾಗಿ ತೆಗೆದುಕೊಳ್ಳುತ್ತಿರುವ ದೀರ್ಘಕಾಲದ ಔಷಧಿಗಳು ಯಾವುವು?", "options": None},
+        10: {"question": "ನಿಮಗೆ ಔಷಧಿಗಳು, ಆಹಾರ ಅಥವಾ ಇತರ ವಸ್ತುಗಳಿಂದ ಯಾವುದೇ ಅಲರ್ಜಿಗಳಿವೆಯೇ?", "options": None},
         11: {"question": "ನಿಮ್ಮ ಹೃದಯ ಬಡಿತ ನಿಂತುಹೋದರೆ, CPR (ಹೃದಯ ಪುನರುಜ್ಜೀವನ ಚಿಕಿತ್ಸೆ) ಮಾಡಿಸಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
         12: {"question": "ನೀವು ಸ್ವತಃ ಉಸಿರಾಡಲು ಸಾಧ್ಯವಾಗದಿದ್ದರೆ, ಯಾಂತ್ರಿಕ ವೆಂಟಿಲೇಟರ್ (ಕೃತಕ ಉಸಿರಾಟ ಯಂತ್ರ) ಸಹಾಯವನ್ನು ಪಡೆಯಲು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
         13: {"question": "ನಿಮ್ಮ ಮೂತ್ರಪಿಂಡಗಳು ಕೆಲಸ ಮಾಡುವುದನ್ನು ನಿಲ್ಲಿಸಿದರೆ, ಡಯಾಲಿಸಿಸ್ ಚಿಕಿತ್ಸೆಯನ್ನು ಮಾಡಿಸಲು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
@@ -192,36 +192,170 @@ LANGUAGE_TEXT = {
         26: {"question": "ನೀವು ಸ್ವತಃ ನಿರ್ಧಾರಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಲು ಸಾಧ್ಯವಾಗದಿದ್ದರೆ, ನಿಮ್ಮ ಮುಖ್ಯ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯಾಗಿ ಯಾರನ್ನು ನೇಮಿಸಲು ಬಯಸುತ್ತೀರಿ? ಅವರ ಪೂರ್ಣ ಹೆಸರನ್ನು ನಮೂದಿಸಿ.", "options": None},
         27: {"question": "ಈ ಪ್ರತಿನಿಧಿಯೊಂದಿಗೆ ನಿಮ್ಮ ಸಂಬಂಧವೇನು?", "options": None},
         28: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆಯನ್ನು ನೀಡಿ:", "options": None},
-        29: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
-        30: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು? (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
+        29: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ:", "options": None},
+        30: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"]},
         31: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿ ಅಲಭ್ಯರಾಗಿದ್ದರೆ ಅವರ ಬದಲಿಗೆ ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳಲು ಪರ್ಯಾಯ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ನೇಮಿಸಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ"]},
         32: {"question": "ನಿಮ್ಮ ಪರ್ಯಾಯ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯ ಪೂರ್ಣ ಹೆಸರು ಏನು?", "options": None},
         33: {"question": "ಈ ಪರ್ಯಾಯ ಪ್ರತಿನಿಧಿಯೊಂದಿಗೆ ನಿಮ್ಮ ಸಂಬಂಧವೇನು?", "options": None},
         34: {"question": "ಅವರ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆಯನ್ನು ನೀಡಿ:", "options": None},
-        35: {"question": "ಅವರ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
-        36: {"question": "ಅವರ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು? (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
-        37: {"question": "ನಿಮ್ಮ ಮರಣಾನಂತರ ಅಂಗಗಳನ್ನು ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
-        38: {"question": "ಅಂಗದಾನದ ಜೊತೆಗೆ, ಮರಣದ ನಂತರ ನಿಮ್ಮ ದೇಹವನ್ನು ವೈದ್ಯಕೀಯ ಶಿಕ್ಷಣ ಮತ್ತು ಸಂಶೋಧನೆಗಾಗಿ ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುತ್ತೀರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
-        39: {"question": "ನಿಮ್ಮ ಅಂತ್ಯಕ್ರಿಯೆ ಅಥವಾ ಕೊನೆಯ ವಿಧಿಗಳ ಬಗ್ಗೆ ಆಶಯಗಳಿವೆಯೇ? (ಐಚ್ಛಿಕ; ದಾಖಲಿಸಬಯಸದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ", "Skip"]},
-        40: {"question": "ನಿಮ್ಮ ಖಾಯಂ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು? (ಪ್ರಸ್ತುತ ವಿಳಾಸವೇ ಆಗಿದ್ದರೆ 'ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ' ಅಥವಾ 'Skip' ಆಯ್ಕೆಮಾಡಿ).", "options": ["ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
+        35: {"question": "ಅವರ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ:", "options": None},
+        36: {"question": "ಅವರ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"]},
+        37: {"question": "ನಿಮ್ಮ ಮರಣಾನಂತರ ಅಂಗಗಳನ್ನು ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ"]},
+        38: {"question": "ಅಂಗದಾನದ ಜೊತೆಗೆ, ಮರಣದ ನಂತರ ನಿಮ್ಮ ದೇಹವನ್ನು ವೈದ್ಯಕೀಯ ಶಿಕ್ಷಣ ಮತ್ತು ಸಂಶೋಧನೆಗಾಗಿ ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುತ್ತೀರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ"]},
+        39: {"question": "ನಿಮ್ಮ ಅಂತ್ಯಕ್ರಿಯೆ ಅಥವಾ ಕೊನೆಯ ವಿಧಿಗಳ ಬಗ್ಗೆ ಆಶಯಗಳಿವೆಯೇ?", "options": ["ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ", "Skip"]},
+        40: {"question": "ನಿಮ್ಮ ಖಾಯಂ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": ["ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
         41: {"question": "ನೀವು ಯಾವ ಸರ್ಕಾರಿ ಗುರುತಿನ ಚೀಟಿಯನ್ನು ನೀಡಲು ಬಯಸುತ್ತೀರಿ? (ಐಚ್ಛಿಕ)", "options": ["Aadhaar", "Passport", "Driving License", "Voter ID", "Skip"]},
-        42: {"question": "ನಿಮ್ಮ ಸರ್ಕಾರಿ ಗುರುತಿನ ಚೀಟಿಯ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ (ಐಚ್ಛಿಕ; ಇಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
-        43: {"question": "ನಿಮ್ಮ ಪುರಸಭೆ ಅಥವಾ ಗ್ರಾಮ ಪಂಚಾಯಿತಿ ಯಾವುದು? (ಐಚ್ಛಿಕ; ಇಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
+        42: {"question": "ನಿಮ್ಮ ಸರ್ಕಾರಿ ಗುರುತಿನ ಚೀಟಿಯ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ", "options": ["Skip"]},
+        43: {"question": "ನಿಮ್ಮ ಪುರಸಭೆ ಅಥವಾ ಗ್ರಾಮ ಪಂಚಾಯಿತಿ ಯಾವುದು?", "options": ["Skip"]},
         44: {"question": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಮುಂಗಡ ಆರೈಕೆ ಯೋಜನೆಯ ಪೂರ್ಣ ಸಾರಾಂಶವನ್ನು ಪರಿಶೀಲಿಸಿ. ಸಿದ್ಧವಾದಾಗ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ, ಅಥವಾ ಬದಲಾವಣೆ ಮಾಡಲು ಆಯ್ಕೆಮಾಡಿ:", "options": ["ನನ್ನ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ", "ವೈಯಕ್ತಿಕ ವಿವರಗಳನ್ನು ತಿದ್ದು", "ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಗಳನ್ನು ತಿದ್ದು", "ಆರೈಕೆ ಆದ್ಯತೆಗಳನ್ನು ತಿದ್ದು", "ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ತಿದ್ದು", "ದಾನದ ನಿರ್ಧಾರಗಳನ್ನು ತಿದ್ದು"]}
     }
 }
 
 # Notebook source: latest definition of ANSWER_NORMALIZATION
 ANSWER_NORMALIZATION = {
-    # English
-    "yes": "Yes",
-    "no": "No",
-    "unsure": "Unsure",
+    # --- Gender Q3 ---
+    "male": "Male",
+    "m": "Male",
+    "ಪುರುಷ": "Male",
+    "female": "Female",
+    "f": "Female",
+    "ಮಹಿಳೆ": "Female",
+    "other": "Other",
+    "non-binary": "Other",
+    "ಇತರೆ": "Other",
 
-    # Kannada
+    # --- Language Q5 ---
+    "english": "English",
+    "en": "English",
+    "ಇಂಗ್ಲಿಷ್": "English",
+    "kannada": "Kannada",
+    "kn": "Kannada",
+    "ಕನ್ನಡ": "Kannada",
+
+    # --- Yes / No / Unsure (Q11-Q18, Q31, Q37, Q38) ---
+    "yes": "Yes",
+    "y": "Yes",
     "ಹೌದು": "Yes",
+    "i want this treatment": "Yes",
+    "want": "Yes",
+    "ಬಯಸುತ್ತೇನೆ": "Yes",
+
+    "no": "No",
+    "n": "No",
     "ಇಲ್ಲ": "No",
-    "ಖಚಿತವಿಲ್ಲ": "Unsure"
+    "i do not want this treatment": "No",
+    "do not want": "No",
+    "don't want": "No",
+    "ಬೇಡ": "No",
+    "ಬಯಸುವುದಿಲ್ಲ": "No",
+
+    "unsure": "Unsure",
+    "not sure": "Unsure",
+    "undecided": "Unsure",
+    "unsure / undecided": "Unsure",
+    "ಖಚಿತವಿಲ್ಲ": "Unsure",
+    "ತೀರ್ಮಾನಿಸಿಲ್ಲ": "Unsure",
+
+    # --- Goals of care Q19 ---
+    "comfort-focused care": "Comfort-focused care",
+    "comfort focused care": "Comfort-focused care",
+    "comfort": "Comfort-focused care",
+    "ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡುವ ಆರೈಕೆ": "Comfort-focused care",
+    "life-prolonging treatment": "Life-prolonging treatment",
+    "life prolonging treatment": "Life-prolonging treatment",
+    "life prolonging": "Life-prolonging treatment",
+    "ಜೀವನವನ್ನು ದೀರ್ಘಗೊಳಿಸುವ ಚಿಕಿತ್ಸೆ": "Life-prolonging treatment",
+    "a balance of comfort and life-prolonging treatment": "A balance of comfort and life-prolonging treatment",
+    "balance of comfort and life-prolonging treatment": "A balance of comfort and life-prolonging treatment",
+    "balance": "A balance of comfort and life-prolonging treatment",
+    "ಆರಾಮ ಮತ್ತು ಜೀವನವನ್ನು ದೀರ್ಘಗೊಳಿಸುವ ಚಿಕಿತ್ಸೆಯ ಸಮತೋಲನ": "A balance of comfort and life-prolonging treatment",
+
+    # --- Preferred place of care Q20 ---
+    "home": "Home",
+    "ಮನೆ": "Home",
+    "hospital": "Hospital",
+    "ಆಸ್ಪತ್ರೆ": "Hospital",
+    "hospice": "Hospice",
+    "hospice or palliative care centre": "Hospice",
+    "hospice or palliative care facility": "Hospice",
+    "ಹಾಸ್ಪಿಸ್ ಅಥವಾ ಪ್ಯಾಲಿಯೇಟಿವ್ ಆರೈಕೆ ಕೇಂದ್ರ": "Hospice",
+    "ಹಾಸ್ಪಿಸ್": "Hospice",
+    "no preference": "No preference",
+    "ಯಾವುದೇ ಆದ್ಯತೆ ಇಲ್ಲ": "No preference",
+    "ಯಾವುದೇ ಆದ್ಯತೆಯಿಲ್ಲ": "No preference",
+
+    # --- Level of medical intervention Q24 ---
+    "full medical treatment": "Full medical treatment",
+    "full treatment": "Full medical treatment",
+    "full": "Full medical treatment",
+    "ಪೂರ್ಣ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ": "Full medical treatment",
+    "limited medical treatment": "Limited medical treatment",
+    "limited treatment": "Limited medical treatment",
+    "limited": "Limited medical treatment",
+    "ಸೀಮಿತ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ": "Limited medical treatment",
+    "comfort-focused treatment": "Comfort-focused treatment",
+    "comfort treatment": "Comfort-focused treatment",
+    "ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡುವ ಚಿಕಿತ್ಸೆ": "Comfort-focused treatment",
+
+    # --- Address Q30, Q36 ---
+    "same as my address": "Same as my address",
+    "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ": "Same as my address",
+
+    # --- Permanent Address Q40 ---
+    "same as current address": "Same as current address",
+    "ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ": "Same as current address",
+
+    # --- General Skip / Wishes ---
+    "skip": "Skip",
+    "ಬಿಟ್ಟುಬಿಡಿ": "Skip",
+    "no specific wishes": "No specific wishes",
+    "ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ": "No specific wishes",
+    "ಯಾವುದೇ ಆಶಯವಿಲ್ಲ": "No specific wishes",
+    "no additional wishes": "No additional wishes",
+    "ಯಾವುದೇ ಹೆಚ್ಚುವರಿ ಆಶಯಗಳಿಲ್ಲ": "No additional wishes",
+    "ಯಾವುದೇ ಹೆಚ್ಚುವರಿ ಆಶಯವಿಲ್ಲ": "No additional wishes",
+
+    # --- Government ID Type Q41 ---
+    "aadhaar": "Aadhaar",
+    "aadhar": "Aadhaar",
+    "ಆಧಾರ್": "Aadhaar",
+    "passport": "Passport",
+    "ಪಾಸ್‌ಪೋರ್ಟ್": "Passport",
+    "driving license": "Driving License",
+    "driving licence": "Driving License",
+    "dl": "Driving License",
+    "ಡ್ರೈವಿಂಗ್ ಲೈಸೆನ್ಸ್": "Driving License",
+    "voter id": "Voter ID",
+    "voter card": "Voter ID",
+    "ಮತದಾರರ ಗುರುತಿನ ಚೀಟಿ": "Voter ID",
+    "ಮತದಾರರ ಐಡಿ": "Voter ID",
+
+    # --- Review Q44 ---
+    "confirm & complete acp": "Confirm & Complete ACP",
+    "confirm plan": "Confirm & Complete ACP",
+    "complete acp": "Confirm & Complete ACP",
+    "confirm": "Confirm & Complete ACP",
+    "ನನ್ನ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ": "Confirm & Complete ACP",
+    "ದೃಢೀಕರಿಸಿ": "Confirm & Complete ACP",
+    "edit personal details": "Edit Personal Details",
+    "ವೈಯಕ್ತಿಕ ವಿವರಗಳನ್ನು ತಿದ್ದು": "Edit Personal Details",
+    "edit medical treatments": "Edit Medical Treatments",
+    "ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಗಳನ್ನು ತಿದ್ದು": "Edit Medical Treatments",
+    "edit end-of-life wishes": "Edit End-of-Life Wishes",
+    "ಆರೈಕೆ ಆದ್ಯತೆಗಳನ್ನು ತಿದ್ದು": "Edit End-of-Life Wishes",
+    "edit healthcare representative": "Edit Healthcare Representative",
+    "ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ತಿದ್ದು": "Edit Healthcare Representative",
+    "edit donation preferences": "Edit Donation Preferences",
+    "ದಾನದ ನಿರ್ಧಾರಗಳನ್ನು ತಿದ್ದು": "Edit Donation Preferences",
+
+    # --- Submenu actions ---
+    "back to review": "Back to Review",
+    "back": "Back to Review",
+    "ಪರಿಶೀಲನೆಗೆ ಹಿಂತಿರುಗಿ": "Back to Review",
+    "ಹಿಂತಿರುಗಿ": "Back to Review",
+    "keep current value": "Keep Current Value",
+    "keep": "Keep Current Value",
+    "ಪ್ರಸ್ತುತ ಮೌಲ್ಯವನ್ನು ಇರಿಸಿ": "Keep Current Value",
 }
 
 # Notebook source: latest definition of TREATMENT_QUESTIONS
@@ -238,10 +372,9 @@ TREATMENT_QUESTIONS = {
     19: "goals of care",
     20: "preferred place of care",
     24: "level of medical intervention",
-    37: "organ donation",
-    38: "body donation",
-    43: "organ donation",
-    44: "body donation",
+    33: "chemotherapy",
+    34: "radiotherapy",
+    35: "major surgery",
 }
 
 def get_session(session_id):
@@ -426,6 +559,25 @@ def save_questionnaire_answer(session_id, answer):
             "message": "Please describe, or answer None / No." if lang != "kn" else "ದಯವಿಟ್ಟು ವಿವರಿಸಿ ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ."
         }
 
+    # Validate Question 29, 35: Email format (no Skip, valid email required)
+    if question_number in (29, 35):
+        clean_email = answer.strip()
+        email_pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+        if clean_email.lower() in ("skip", "none", "n/a", "ಬಿಟ್ಟುಬಿಡಿ") or not re.match(email_pattern, clean_email):
+            return {
+                "status": "invalid",
+                "message": "Please provide a valid email address." if lang != "kn" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ."
+            }
+
+    # Validate Question 30, 36: Residential address (no Skip)
+    if question_number in (30, 36):
+        clean_addr = answer.strip()
+        if clean_addr.lower() in ("skip", "none", "n/a", "ಬಿಟ್ಟುಬಿಡಿ"):
+            return {
+                "status": "invalid",
+                "message": "Please enter a residential address or select 'Same as my address'." if lang != "kn" else "ದಯವಿಟ್ಟು ವಾಸಸ್ಥಳದ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ ಅಥವಾ 'ನನ್ನ ವಿಳಾಸದಂತೆಯೇ' ಆಯ್ಕೆಮಾಡಿ."
+            }
+
     # Validate predefined choice questions
     if question["type"] == "choice":
 
@@ -434,14 +586,22 @@ def save_questionnaire_answer(session_id, answer):
         matched_option = None
 
         for option in valid_options:
-            if answer.lower() == option.lower():
+            if answer.strip().lower() == option.strip().lower():
                 matched_option = option
                 break
 
         if matched_option is None:
+            norm = normalize_answer(answer)
+            if norm:
+                for option in valid_options:
+                    if norm.strip().lower() == option.strip().lower():
+                        matched_option = option
+                        break
+
+        if matched_option is None:
             return {
                 "status": "invalid",
-                "message": "Please select one of the available options.",
+                "message": "Please select one of the available options." if lang != "kn" else "ದಯವಿಟ್ಟು ಲಭ್ಯವಿರುವ ಆಯ್ಕೆಗಳಲ್ಲಿ ಒಂದನ್ನು ಆರಿಸಿ.",
                 "options": valid_options
             }
 
@@ -477,6 +637,13 @@ def save_questionnaire_answer(session_id, answer):
         record["organ_donation"] = {"ಹೌದು": "Yes", "ಇಲ್ಲ": "No", "ಖಚಿತವಿಲ್ಲ": "Unsure"}.get(answer, answer)
     elif question_number == 20 and answer.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "ಬಿಟ್ಟುಬಿಡಿ."):
         record[question["key"]] = "Not provided"
+    elif question_number in (11, 12, 13, 14, 15, 16, 17, 18) and answer == "Unsure":
+        # Do not overwrite previously saved Yes or No preference
+        existing_pref = record.get(question["key"])
+        if existing_pref not in ("Yes", "No"):
+            record[question["key"]] = "Unsure"
+    elif question_number in (30, 36) and answer.strip().lower() in ("same as my address", "same as current address", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"):
+        record[question["key"]] = record.get("permanent_address") or record.get("current_address") or answer
     else:
         record[question["key"]] = answer
 
@@ -728,7 +895,7 @@ def get_display_options(session_id, question_number):
 
 
 TREATMENT_EXPLANATIONS = {
-    10: {
+    11: {
         "en": {
             "title": "Cardiopulmonary Resuscitation (CPR)",
             "summary": "CPR is an emergency medical procedure performed when a person's heartbeat or breathing stops unexpectedly. It involves vigorous chest compressions to manually pump blood and oxygen to the brain and other vital organs, often combined with artificial ventilation or an electric defibrillator to shock the heart back into rhythm.",
@@ -737,7 +904,7 @@ TREATMENT_EXPLANATIONS = {
                 ("No", "You choose a 'Do Not Resuscitate' (DNR) approach. If your heart stops naturally, the medical team will allow a peaceful, natural death without invasive chest compressions or electric shocks, focusing fully on comfort and pain relief."),
                 ("Unsure", "You need more time or wish to consult your family or doctor before making a choice.")
             ],
-            "guidance": "Selecting 'Unsure' provides this medical explanation without recording a choice. Your question remains open. When you are ready, please select an option (such as Yes or No) to register your preference."
+            "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When you are ready, please select an option (such as Yes or No) to register your preference."
         },
         "kn": {
             "title": "ಕಾರ್ಡಿಯೋಪಲ್ಮನರಿ ರಿಸಸಿಟೇಶನ್ (CPR)",
@@ -750,32 +917,32 @@ TREATMENT_EXPLANATIONS = {
             "guidance": "ಗಮನಿಸಿ: 'ಖಚಿತವಿಲ್ಲ' ಆಯ್ಕೆ ಮಾಡಿದ್ದರಿಂದ ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ನೀವು ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ('ಹೌದು' ಅಥವಾ 'ಇಲ್ಲ') ಆರಿಸಿ."
         }
     },
-    11: {
+    12: {
         "en": {
-            "title": "Mechanical Ventilation (Breathing Machine)",
-            "summary": "Mechanical ventilation is a life-support system that breathes for you when your lungs are unable to take in enough oxygen or expel carbon dioxide. A breathing tube is inserted through your mouth or throat into your windpipe (intubation) and connected to a ventilator machine.",
+            "title": "Mechanical Ventilation",
+            "summary": "Mechanical ventilation is a medical treatment that uses a breathing machine (ventilator) to help a person breathe when they cannot breathe adequately on their own. A tube may be placed through the mouth or nose into the windpipe, or through a tracheostomy.",
             "options_explanation": [
-                ("Yes", "You want to be placed on a mechanical ventilator if you become unable to breathe independently."),
-                ("No", "You do not want invasive breathing machines. Medical staff will provide supplemental oxygen, positioning, and medications to ease breathlessness comfortably without a machine."),
-                ("Unsure", "You are undecided and wish to keep your decision open while reviewing your options.")
+                ("Yes", "You would want mechanical ventilation if you are unable to breathe adequately on your own."),
+                ("No", "You would not want mechanical ventilation and would prefer other forms of care focused on your wishes."),
+                ("Unsure", "You would like more information before deciding about mechanical ventilation.")
             ],
-            "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When you are ready, please select an option to record your choice."
+            "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When you are ready, please select an option (such as Yes or No) to record your choice."
         },
         "kn": {
             "title": "ಕೃತಕ ಉಸಿರಾಟದ ಸಾಧನ (ವೆಂಟಿಲೇಟರ್ / Mechanical Ventilator)",
-            "summary": "ವೆಂಟಿಲೇಟರ್ ಎನ್ನುವುದು ಶ್ವಾಸಕೋಶಗಳು ಸ್ವತಃ ಆಮ್ಲಜನಕವನ್ನು ಪಡೆಯಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ಉಸಿರಾಟದ ನಳಿಕೆ (intubation) ಮೂಲಕ ಶ್ವಾಸಕೋಶಕ್ಕೆ ಗಾಳಿ ಮತ್ತು ಆಮ್ಲಜನಕವನ್ನು ತಲುಪಿಸುವ ಜೀವ ರಕ್ಷಕ ಯಂತ್ರವಾಗಿದೆ.",
+            "summary": "ವೆಂಟಿಲೇಟರ್ ಎನ್ನುವುದು ಶ್ವಾಸಕೋಶಗಳು ಸ್ವತಃ ಆಮ್ಲಜನಕವನ್ನು ಪಡೆಯಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ಉಸಿರಾಟದ ನಳಿಕೆ (intubation) ಅಥವಾ ಟ್ರಾಕಿಯೊಸ್ಟೊಮಿ ಮೂಲಕ ಶ್ವಾಸಕೋಶಕ್ಕೆ ಗಾಳಿ ಮತ್ತು ಆಮ್ಲಜನಕವನ್ನು ತಲುಪಿಸುವ ಜೀವ ರಕ್ಷಕ ಯಂತ್ರವಾಗಿದೆ.",
             "options_explanation": [
-                ("ಹೌದು (Yes)", "ಸ್ವತಂತ್ರವಾಗಿ ಉಸಿರಾಡಲು ಸಾಧ್ಯವಾಗದ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ವೆಂಟಿಲೇಟರ್ ಯಂತ್ರದ ನೆರವು ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
-                ("ಇಲ್ಲ (No)", "ಯಂತ್ರದ ನೆರವು ಬೇಡ; ಬದಲಿಗೆ ಆಮ್ಲಜನಕ ಮುಖವಾಡ ಹಾಗೂ ನೋವು ನಿವಾರಕಗಳ ಮೂಲಕ ಉಸಿರಾಟದ ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡಲಾಗುತ್ತದೆ."),
-                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಇನ್ನೂ ಅಂತಿಮ ತೀರ್ಮಾನಕ್ಕೆ ಬಂದಿಲ್ಲ ಮತ್ತು ಹೆಚ್ಚಿನ ಸಮಾಲೋಚನೆ ಬಯಸುತ್ತೀರಿ.")
+                ("ಹೌದು (Yes)", "ಸ್ವತಂತ್ರವಾಗಿ ಉಸಿರಾಡಲು ಸಾಧ್ಯವಾಗದ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ವೆಂಟಿಲೇಟರ್ ಯಂತ್ರದ ನೆರವು ಪಡೆಯಲು ನೀವು ಬಯಸುತ್ತೀರಿ."),
+                ("ಇಲ್ಲ (No)", "ಕೃತಕ ಉಸಿರಾಟದ ಯಂತ್ರದ ನೆರವು ಬೇಡ; ಬದಲಿಗೆ ನಿಮ್ಮ ಆಶಯಗಳಿಗೆ ಅನುಗುಣವಾಗಿ ಇತರ ಆರಾಮದಾಯಕ ಆರೈಕೆಗೆ ಆದ್ಯತೆ ನೀಡಲಾಗುತ್ತದೆ."),
+                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ವೆಂಟಿಲೇಟರ್ ಬಗ್ಗೆ ಅಂತಿಮ ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳುವ ಮುನ್ನ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
             ],
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ನಿಮ್ಮ ಅಂತಿಮ ನಿರ್ಧಾರವನ್ನು ದಾಖಲಿಸಿ."
         }
     },
-    12: {
+    13: {
         "en": {
             "title": "Kidney Dialysis",
-            "summary": "Dialysis is an artificial medical process that cleans your blood by removing waste toxins, salts, and excess water when your kidneys fail and can no longer filter blood naturally.",
+            "summary": "Kidney dialysis is an artificial medical process that cleans your blood by removing waste toxins, salts, and excess water when your kidneys fail and can no longer filter blood naturally.",
             "options_explanation": [
                 ("Yes", "You consent to undergo hemodialysis or peritoneal dialysis if your kidneys cease working."),
                 ("No", "You prefer conservative medical kidney management without ongoing artificial blood filtering, prioritizing symptom comfort."),
@@ -794,29 +961,73 @@ TREATMENT_EXPLANATIONS = {
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಇನ್ನೂ ದಾಖಲಿಸಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
         }
     },
-    13: {
+    14: {
         "en": {
-            "title": "Artificial Nutrition (Tube Feeding)",
-            "summary": "Artificial nutrition supplies liquid formulas containing calories, proteins, and essential nutrients through a tube (such as a nasogastric tube through the nose or a gastrostomy PEG tube directly into the stomach) when eating by mouth is impossible.",
+            "title": "Chemotherapy (Cancer Treatment)",
+            "summary": "Chemotherapy uses specialized anti-cancer medications administered intravenously or in pill form to destroy, shrink, or slow the growth of cancer cells throughout the body.",
             "options_explanation": [
-                ("Yes", "You want tube feeding if you permanently or temporarily lose the ability to eat or swallow food."),
-                ("No", "You prefer to be fed by mouth for comfort as tolerated, without surgical feeding tubes."),
-                ("Unsure", "You want more information before deciding on artificial nutrition.")
+                ("Yes", "You would want chemotherapy if recommended by your medical team to treat cancer or prolong life."),
+                ("No", "You do not want chemotherapy and would prefer supportive, comfort-focused cancer care managing symptoms without chemo drugs."),
+                ("Unsure", "You need more information or wish to discuss the potential benefits and side effects before deciding.")
             ],
             "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
         },
         "kn": {
-            "title": "ಕೃತಕ ಪೋಷಕಾಂಶ / ಟ್ಯೂಬ್ ಫೀಡಿಂಗ್ (Artificial Nutrition)",
-            "summary": "ಬಾಯಿಯ ಮೂಲಕ ಆಹಾರ ಸೇವಿಸಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ಮೂಗಿನ ಮೂಲಕ ಅಥವಾ ಹೊಟ್ಟೆಯ ಮೂಲಕ ಟ್ಯೂಬ್ ಅಳವಡಿಸಿ ದ್ರವರೂಪದ ಪೋಷಕಾಂಶಗಳನ್ನು ಪೂರೈಸುವ ವಿಧಾನವಾಗಿದೆ.",
+            "title": "ಕೀಮೋಥೆರಪಿ (ಕ್ಯಾನ್ಸರ್ ಚಿಕಿತ್ಸೆ / Chemotherapy)",
+            "summary": "ಕೀಮೋಥೆರಪಿ ಎನ್ನುವುದು ದೇಹದಲ್ಲಿರುವ ಕ್ಯಾನ್ಸರ್ ಕೋಶಗಳನ್ನು ನಾಶಪಡಿಸಲು, ಕುಗ್ಗಿಸಲು ಅಥವಾ ಅವುಗಳ ಬೆಳವಣಿಗೆಯನ್ನು ನಿಧಾನಗೊಳಿಸಲು IV ನರಗಳ ಮೂಲಕ ಅಥವಾ ಮಾತ್ರೆಗಳ ರೂಪದಲ್ಲಿ ನೀಡಲಾಗುವ ವಿಶೇಷ ಕ್ಯಾನ್ಸರ್ ವಿರೋಧಿ ಔಷಧಿ ಚಿಕಿತ್ಸೆಯಾಗಿದೆ.",
             "options_explanation": [
-                ("ಹೌದು (Yes)", "ಆಹಾರ ಸೇವಿಸಲು ಅಸಾಧ್ಯವಾದಾಗ ಟ್ಯೂಬ್ ಮೂಲಕ ಪೋಷಕಾಂಶ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
-                ("ಇಲ್ಲ (No)", "ಕೃತಕ ಟ್ಯೂಬ್ ಬೇಡ, ಬಾಯಿಯ ಮೂಲಕ ಸಾಧ್ಯವಾದಷ್ಟು ಆರಾಮದಾಯಕ ಆಹಾರ ನೀಡಲು ಬಯಸುತ್ತೀರಿ."),
-                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಹೆಚ್ಚಿನ ಸಮಾಲೋಚನೆ ಅಗತ್ಯವಿದೆ.")
+                ("ಹೌದು (Yes)", "ಕ್ಯಾನ್ಸರ್ ನಿಯಂತ್ರಣಕ್ಕೆ ವೈದ್ಯಕೀಯ ತಂಡ ಶಿಫಾರಸು ಮಾಡಿದರೆ ಕೀಮೋಥೆರಪಿ ಚಿಕಿತ್ಸೆ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                ("ಇಲ್ಲ (No)", "ಕೀಮೋಥೆರಪಿ ಔಷಧಿಗಳು ಬೇಡ; ಬದಲಿಗೆ ನೋವು ನಿವಾರಣೆ ಮತ್ತು ಆರಾಮದಾಯಕ ಶುಶ್ರೂಷೆಗೆ ಮಾತ್ರ ಆದ್ಯತೆ ನೀಡುತ್ತೀರಿ."),
+                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ನಿರ್ಧರಿಸುವ ಮುನ್ನ ಇದರ ಅಡ್ಡಪರಿಣಾಮಗಳು ಮತ್ತು ಪ್ರಯೋಜನಗಳ ಬಗ್ಗೆ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
             ],
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
         }
     },
-    14: {
+    15: {
+        "en": {
+            "title": "Radiotherapy (Radiation Treatment)",
+            "summary": "Radiotherapy uses targeted high-energy radiation beams (such as X-rays) directed precisely at tumors to destroy cancer cells, shrink growths, or relieve localized pain and bleeding.",
+            "options_explanation": [
+                ("Yes", "You would want radiation therapy if recommended to control cancer or alleviate tumor symptoms."),
+                ("No", "You do not want radiation treatment and prefer comfort-focused alternatives."),
+                ("Unsure", "You want more information about radiation therapy before deciding.")
+            ],
+            "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+        },
+        "kn": {
+            "title": "ರೇಡಿಯೋಥೆರಪಿ (ವಿಕಿರಣ ಚಿಕಿತ್ಸೆ / Radiotherapy)",
+            "summary": "ರೇಡಿಯೋಥೆರಪಿಯು ಕ್ಯಾನ್ಸರ್ ಕೋಶಗಳನ್ನು ನಾಶಮಾಡಲು, ಗೆಡ್ಡೆಗಳನ್ನು ಕುಗ್ಗಿಸಲು ಅಥವಾ ನೋವನ್ನು ನಿವಾರಿಸಲು ಉದ್ದೇಶಿತ ಅಧಿಕ-ಶಕ್ತಿಯ ವಿಕಿರಣ ಕಿರಣಗಳನ್ನು (Radiation beams) ಬಳಸುವ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಯಾಗಿದೆ.",
+            "options_explanation": [
+                ("ಹೌದು (Yes)", "ಕ್ಯಾನ್ಸರ್ ನಿಯಂತ್ರಣಕ್ಕೆ ಅಥವಾ ರೋಗಲಕ್ಷಣಗಳ ನಿವಾರಣೆಗೆ ವಿಕಿರಣ ಚಿಕಿತ್ಸೆ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                ("ಇಲ್ಲ (No)", "ವಿಕಿರಣ ಚಿಕಿತ್ಸೆ ಬೇಡ; ಕೇವಲ ನೋವು ಶಮನ ಮತ್ತು ಆರಾಮದಾಯಕ ಆರೈಕೆ ಸಾಕು."),
+                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳುವ ಮುನ್ನ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
+            ],
+            "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+        }
+    },
+    16: {
+        "en": {
+            "title": "Major Surgery (Invasive Operations)",
+            "summary": "Major surgery involves invasive operative procedures performed under general anesthesia in an operating room to repair damaged organs, remove diseased tissue, or address life-threatening conditions.",
+            "options_explanation": [
+                ("Yes", "You consent to undergo major surgery if doctors determine it is needed to treat a life-threatening illness or improve your health."),
+                ("No", "You choose to forgo invasive surgical operations, preferring non-surgical medical management and comfort care."),
+                ("Unsure", "You wish to evaluate the risks, recovery expectations, and benefits before deciding about major surgery.")
+            ],
+            "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+        },
+        "kn": {
+            "title": "ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆ (Major Surgery)",
+            "summary": "ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಯು ಸಾಮಾನ್ಯ ಅರಿವಳಿಕೆ (general anesthesia) ನೀಡಿ, ರೋಗಗ್ರಸ್ತ ಅಂಗಾಂಶಗಳನ್ನು ತೆಗೆದುಹಾಕಲು ಅಥವಾ ಜೀವಕ್ಕೆ ಅಪಾಯವಿರುವ ಪರಿಸ್ಥಿತಿಗಳನ್ನು ಸರಿಪಡಿಸಲು ಮಾಡುವ ಆಪರೇಷನ್ ವಿಧಾನವಾಗಿದೆ.",
+            "options_explanation": [
+                ("ಹೌದು (Yes)", "ಜೀವ ಉಳಿಸಲು ಅಥವಾ ಆರೋಗ್ಯ ಸುಧಾರಿಸಲು ಅಗತ್ಯವಿದ್ದರೆ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಸಮ್ಮತಿಸುತ್ತೀರಿ."),
+                ("ಇಲ್ಲ (No)", "ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗಳು ಬೇಡ; ಕೇವಲ ಶಸ್ತ್ರಚಿಕಿತ್ಸೇತರ ಔಷಧಿ ಮತ್ತು ಆರಾಮದಾಯಕ ಆರೈಕೆ ಸಾಕು."),
+                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಯ ಅಪಾಯಗಳು ಮತ್ತು ಚೇತರಿಕೆಯ ಸಾಧ್ಯತೆಗಳ ಬಗ್ಗೆ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
+            ],
+            "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+        }
+    },
+    17: {
         "en": {
             "title": "Artificial Hydration (Intravenous Fluids)",
             "summary": "Artificial hydration involves giving water and electrolytes through an intravenous (IV) drip into a vein or through a tube when a person cannot drink fluids naturally.",
@@ -838,29 +1049,29 @@ TREATMENT_EXPLANATIONS = {
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
         }
     },
-    15: {
+    18: {
         "en": {
-            "title": "Organ and Tissue Donation",
-            "summary": "Organ donation allows your organs (such as kidneys, heart, liver, lungs) and tissues (such as corneas or skin) to be transplanted to save or restore sight/health for patients in critical need after death.",
+            "title": "Artificial Nutrition (Tube Feeding)",
+            "summary": "Artificial nutrition supplies liquid formulas containing calories, proteins, and essential nutrients through a tube (such as a nasogastric tube through the nose or a gastrostomy PEG tube directly into the stomach) when eating by mouth is impossible.",
             "options_explanation": [
-                ("Yes", "You consent to donate organs and/or tissues to help others after your passing."),
-                ("No", "You do not wish to donate organs or tissues upon death."),
-                ("Unsure", "You want to discuss organ donation with family or read more before making a pledge.")
+                ("Yes", "You want tube feeding if you permanently or temporarily lose the ability to eat or swallow food."),
+                ("No", "You prefer to be fed by mouth for comfort as tolerated, without surgical feeding tubes."),
+                ("Unsure", "You want more information before deciding on artificial nutrition.")
             ],
             "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
         },
         "kn": {
-            "title": "ಅಂಗದಾನ (Organ Donation)",
-            "summary": "ಮರಣಾನಂತರ ಅಗತ್ಯವಿರುವ ರೋಗಿಗಳ ಜೀವ ಉಳಿಸಲು ಅಥವಾ ದೃಷ್ಟಿ ನೀಡಲು ನಿಮ್ಮ ಪ್ರಮುಖ ಅಂಗಗಳನ್ನು (ಮೂತ್ರಪಿಂಡ, ಕಣ್ಣುಗಳು, ಇತ್ಯಾದಿ) ದಾನ ಮಾಡುವ ಪ್ರಕ್ರಿಯೆ.",
+            "title": "ಕೃತಕ ಪೋಷಕಾಂಶ / ಟ್ಯೂಬ್ ಫೀಡಿಂಗ್ (Artificial Nutrition)",
+            "summary": "ಬಾಯಿಯ ಮೂಲಕ ಆಹಾರ ಸೇವಿಸಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ಮೂಗಿನ ಮೂಲಕ ಅಥವಾ ಹೊಟ್ಟೆಯ ಮೂಲಕ ಟ್ಯೂಬ್ ಅಳವಡಿಸಿ ದ್ರವರೂಪದ ಪೋಷಕಾಂಶಗಳನ್ನು ಪೂರೈಸುವ ವಿಧಾನವಾಗಿದೆ.",
             "options_explanation": [
-                ("ಹೌದು (Yes)", "ಮರಣಾನಂತರ ಇತರರ ಜೀವ ರಕ್ಷಣೆಗೆ ಅಂಗದಾನ ಮಾಡಲು ಸಮ್ಮತಿಸುತ್ತೀರಿ."),
-                ("ಇಲ್ಲ (No)", "ಅಂಗದಾನ ಮಾಡಲು ಇಚ್ಛಿಸುವುದಿಲ್ಲ."),
-                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಕುಟುಂಬದೊಂದಿಗೆ ಚರ್ಚಿಸಿ ನಿರ್ಧರಿಸಲು ಬಯಸುತ್ತೀರಿ.")
+                ("ಹೌದು (Yes)", "ಆಹಾರ ಸೇವಿಸಲು ಅಸಾಧ್ಯವಾದಾಗ ಟ್ಯೂಬ್ ಮೂಲಕ ಪೋಷಕಾಂಶ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                ("ಇಲ್ಲ (No)", "ಕೃತಕ ಟ್ಯೂಬ್ ಬೇಡ, ಬಾಯಿಯ ಮೂಲಕ ಸಾಧ್ಯವಾದಷ್ಟು ಆರಾಮದಾಯಕ ಆಹಾರ ನೀಡಲು ಬಯಸುತ್ತೀರಿ."),
+                ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಹೆಚ್ಚಿನ ಸಮಾಲೋಚನೆ ಅಗತ್ಯವಿದೆ.")
             ],
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
         }
     },
-    16: {
+    19: {
         "en": {
             "title": "Goals of Care",
             "summary": "Goals of care help doctors understand your overall treatment philosophy during severe illness: whether to maximize comfort, pursue every life-prolonging intervention, or maintain a thoughtful balance between the two.",
@@ -884,7 +1095,7 @@ TREATMENT_EXPLANATIONS = {
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
         }
     },
-    17: {
+    20: {
         "en": {
             "title": "Preferred Place of Care",
             "summary": "Expresses where you would feel safest and most at peace during the final stages of illness or recovery.",
@@ -910,7 +1121,7 @@ TREATMENT_EXPLANATIONS = {
             "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
         }
     },
-    18: {
+    24: {
         "en": {
             "title": "Level of Medical Intervention",
             "summary": "Guides medical teams on how aggressively to intervene when serious medical events occur.",
@@ -936,27 +1147,62 @@ TREATMENT_EXPLANATIONS = {
     }
 }
 
+# Aliases for legacy question numbers, follow-up IDs, and string keys
+TREATMENT_EXPLANATIONS[10] = TREATMENT_EXPLANATIONS[11]   # legacy CPR
+TREATMENT_EXPLANATIONS[33] = TREATMENT_EXPLANATIONS[14]   # follow-up chemo
+TREATMENT_EXPLANATIONS[34] = TREATMENT_EXPLANATIONS[15]   # follow-up radio
+TREATMENT_EXPLANATIONS[35] = TREATMENT_EXPLANATIONS[16]   # follow-up surgery
+
+TREATMENT_EXPLANATIONS["cpr"] = TREATMENT_EXPLANATIONS[11]
+TREATMENT_EXPLANATIONS["ventilator"] = TREATMENT_EXPLANATIONS[12]
+TREATMENT_EXPLANATIONS["mechanical ventilation"] = TREATMENT_EXPLANATIONS[12]
+TREATMENT_EXPLANATIONS["dialysis"] = TREATMENT_EXPLANATIONS[13]
+TREATMENT_EXPLANATIONS["kidney dialysis"] = TREATMENT_EXPLANATIONS[13]
+TREATMENT_EXPLANATIONS["chemotherapy"] = TREATMENT_EXPLANATIONS[14]
+TREATMENT_EXPLANATIONS["radiotherapy"] = TREATMENT_EXPLANATIONS[15]
+TREATMENT_EXPLANATIONS["surgery"] = TREATMENT_EXPLANATIONS[16]
+TREATMENT_EXPLANATIONS["major surgery"] = TREATMENT_EXPLANATIONS[16]
+TREATMENT_EXPLANATIONS["artificial_hydration"] = TREATMENT_EXPLANATIONS[17]
+TREATMENT_EXPLANATIONS["hydration"] = TREATMENT_EXPLANATIONS[17]
+TREATMENT_EXPLANATIONS["artificial_nutrition"] = TREATMENT_EXPLANATIONS[18]
+TREATMENT_EXPLANATIONS["nutrition"] = TREATMENT_EXPLANATIONS[18]
+TREATMENT_EXPLANATIONS["goals_of_care"] = TREATMENT_EXPLANATIONS[19]
+TREATMENT_EXPLANATIONS["goals of care"] = TREATMENT_EXPLANATIONS[19]
+TREATMENT_EXPLANATIONS["preferred_place_of_care"] = TREATMENT_EXPLANATIONS[20]
+TREATMENT_EXPLANATIONS["preferred place of care"] = TREATMENT_EXPLANATIONS[20]
+TREATMENT_EXPLANATIONS["level_of_medical_intervention"] = TREATMENT_EXPLANATIONS[24]
+TREATMENT_EXPLANATIONS["level of medical intervention"] = TREATMENT_EXPLANATIONS[24]
+
 
 def generate_knowledge_fallback_explanation(
     topic: str,
-    question_number: int,
-    retrieved: list[dict],
+    question_number: int | str | None,
+    retrieved: list[dict] | None = None,
     language: str = "en",
     display_options: list[str] | None = None
 ) -> str:
     """Generate a safe, patient-friendly, objective explanation synthesized from knowledge documents."""
     lang = "kn" if language == "kn" else "en"
-    exp_data = TREATMENT_EXPLANATIONS.get(question_number, {}).get(lang)
-    if not exp_data:
+    exp_data = None
+    if question_number is not None:
+        exp_data = TREATMENT_EXPLANATIONS.get(question_number, {}).get(lang)
+    if not exp_data and topic:
+        exp_data = TREATMENT_EXPLANATIONS.get(str(topic).lower().strip(), {}).get(lang)
+    if not exp_data and question_number is not None:
         exp_data = TREATMENT_EXPLANATIONS.get(question_number, {}).get("en", {})
+    if not exp_data and topic:
+        exp_data = TREATMENT_EXPLANATIONS.get(str(topic).lower().strip(), {}).get("en", {})
+    if not exp_data:
+        exp_data = {}
 
-    title = exp_data.get("title", topic)
+    title = exp_data.get("title", topic or "Medical Treatment")
     summary = exp_data.get("summary", "")
     opts = exp_data.get("options_explanation", [])
     guidance = exp_data.get("guidance", "")
 
     lines = []
     if lang == "kn":
+        lines.append("ಶೈಕ್ಷಣಿಕ ಮಾಹಿತಿ (ಖಚಿತವಿಲ್ಲ)\n")
         lines.append(f"ವೈದ್ಯಕೀಯ ಮಾಹಿತಿ: {title}")
         lines.append(summary)
         lines.append("\nಲಭ್ಯವಿರುವ ಆಯ್ಕೆಗಳ ವಿವರಣೆ:")
@@ -964,6 +1210,7 @@ def generate_knowledge_fallback_explanation(
             lines.append(f"• {opt_label}: {opt_desc}")
         lines.append(f"\n{guidance}")
     else:
+        lines.append("Educational Information (Unsure)\n")
         lines.append(f"Medical Information: {title}")
         lines.append(summary)
         lines.append("\nExplanation of Choices:")
@@ -1255,6 +1502,21 @@ def handle_unsure_response(session_id):
         display_question_text = question["question"]
         display_options = options
 
+    if question_number in TREATMENT_EXPLANATIONS:
+        explanation = generate_knowledge_fallback_explanation(
+            topic=topic,
+            question_number=question_number,
+            language=language,
+            display_options=display_options
+        )
+        return {
+            "message": explanation,
+            "sources": [
+                "National Health Service (NHS) Advance Care Planning Guidelines",
+                "Indian Council of Medical Research (ICMR) End-of-Life Care Guidelines"
+            ]
+        }
+
     query = f"""
 Explain the following advance care planning questionnaire topic.
 
@@ -1424,48 +1686,51 @@ def chat(session_id: str, user_message: str, question_number: int | None = None)
         # --------------------------------------------------
 
         if question["type"] == "choice":
+            english_options = question.get("options") or []
+            display_question = get_question_text(
+                session_id,
+                question_number
+            )
+            display_options = (
+                display_question.get("options") or []
+            )
 
-            valid_answer = normalized_answer
+            valid_answer = None
 
-            # Check Kannada / displayed options
+            # 1. Direct case-insensitive match against canonical English options
+            for opt in english_options:
+                if user_message.strip().lower() == opt.strip().lower():
+                    valid_answer = opt
+                    break
+
+            # 2. Match against displayed options (Kannada or English)
             if valid_answer is None:
+                for idx, d_opt in enumerate(display_options):
+                    if (
+                        user_message.strip() == d_opt.strip()
+                        or user_message.strip().lower() == d_opt.strip().lower()
+                    ):
+                        if idx < len(english_options):
+                            valid_answer = english_options[idx]
+                            break
 
-                display_question = get_question_text(
-                    session_id,
-                    question_number
-                )
-
-                display_options = (
-                    display_question.get("options") or []
-                )
-
-                if user_message in display_options:
-
-                    option_index = display_options.index(
-                        user_message
-                    )
-
-                    english_options = question.get(
-                        "options",
-                        []
-                    )
-
-                    if option_index < len(english_options):
-                        valid_answer = english_options[
-                            option_index
-                        ]
+            # 3. Match normalized_answer against canonical English options
+            if valid_answer is None and normalized_answer:
+                for opt in english_options:
+                    if normalized_answer.strip().lower() == opt.strip().lower():
+                        valid_answer = opt
+                        break
 
             # Invalid option
             if valid_answer is None:
-
-                display_question = get_question_text(
-                    session_id,
-                    question_number
+                err_msg = (
+                    "ದಯವಿಟ್ಟು ಲಭ್ಯವಿರುವ ಆಯ್ಕೆಗಳಲ್ಲಿ ಒಂದನ್ನು ಆರಿಸಿ."
+                    if session.get("language") == "kn"
+                    else "Please select one of the available options."
                 )
-
                 return {
                     "status": "invalid",
-                    "message": "Please select one of the available options.",
+                    "message": err_msg,
                     "question_number": question_number,
                     "answer": None,
                     "next_question": {

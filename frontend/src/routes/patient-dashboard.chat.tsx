@@ -67,8 +67,10 @@ const KN_TO_CANONICAL: Record<string, string> = {
   "ಆರಾಮ ಮತ್ತು ಜೀವನವನ್ನು ದೀರ್ಘಗೊಳಿಸುವ ಚಿಕಿತ್ಸೆಯ ಸಮತೋಲನ": "A balance of comfort and life-prolonging treatment",
   // Preferred place of care Q20
   "ಮನೆ": "Home", "ಆಸ್ಪತ್ರೆ": "Hospital",
-  "ಹಾಸ್ಪಿಸ್ ಅಥವಾ ಪ್ಯಾಲಿಯೇಟಿವ್ ಆರೈಕೆ ಕೇಂದ್ರ": "Hospice or Palliative Care Centre",
+  "ಹಾಸ್ಪಿಸ್ ಅಥವಾ ಪ್ಯಾಲಿಯೇಟಿವ್ ಆರೈಕೆ ಕೇಂದ್ರ": "Hospice",
+  "ಹಾಸ್ಪಿಸ್": "Hospice",
   "ಯಾವುದೇ ಆದ್ಯತೆ ಇಲ್ಲ": "No preference",
+  "ಯಾವುದೇ ಆದ್ಯತೆಯಿಲ್ಲ": "No preference",
   // Level of medical intervention Q24
   "ಪೂರ್ಣ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ": "Full medical treatment",
   "ಸೀಮಿತ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ": "Limited medical treatment",
@@ -78,14 +80,24 @@ const KN_TO_CANONICAL: Record<string, string> = {
   "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ": "Same as my address",
   "ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ": "Same as current address",
   "ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ": "No specific wishes",
+  "ಯಾವುದೇ ಆಶಯವಿಲ್ಲ": "No specific wishes",
   "ಯಾವುದೇ ಹೆಚ್ಚುವರಿ ಆಶಯಗಳಿಲ್ಲ": "No additional wishes",
+  "ಯಾವುದೇ ಹೆಚ್ಚುವರಿ ಆಶಯವಿಲ್ಲ": "No additional wishes",
+  // Government ID Type Q41
+  "ಆಧಾರ್": "Aadhaar",
+  "ಪಾಸ್‌ಪೋರ್ಟ್": "Passport",
+  "ಡ್ರೈವಿಂಗ್ ಲೈಸೆನ್ಸ್": "Driving License",
+  "ಮತದಾರರ ಗುರುತಿನ ಚೀಟಿ": "Voter ID",
   // Review / confirm Q44
   "ನನ್ನ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ": "Confirm & Complete ACP",
+  "ದೃಢೀಕರಿಸಿ": "Confirm & Complete ACP",
   "ವೈಯಕ್ತಿಕ ವಿವರಗಳನ್ನು ತಿದ್ದು": "Edit Personal Details",
   "ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಗಳನ್ನು ತಿದ್ದು": "Edit Medical Treatments",
   "ಆರೈಕೆ ಆದ್ಯತೆಗಳನ್ನು ತಿದ್ದು": "Edit End-of-Life Wishes",
   "ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ತಿದ್ದು": "Edit Healthcare Representative",
   "ದಾನದ ನಿರ್ಧಾರಗಳನ್ನು ತಿದ್ದು": "Edit Donation Preferences",
+  "ಪರಿಶೀಲನೆಗೆ ಹಿಂತಿರುಗಿ": "Back to Review",
+  "ಪ್ರಸ್ತುತ ಮೌಲ್ಯವನ್ನು ಇರಿಸಿ": "Keep Current Value",
 };
 
 interface MessageItem {
@@ -721,8 +733,9 @@ function ChatPage() {
       }
     }
 
+    const canonicalText = KN_TO_CANONICAL[text] ?? text;
     sendLockedRef.current = true;
-    sendMessageMutation.mutate({ text, display: text });
+    sendMessageMutation.mutate({ text: canonicalText, display: text });
   };
 
   /**

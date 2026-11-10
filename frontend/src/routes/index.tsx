@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain,
@@ -23,6 +23,17 @@ import { authService } from "@/lib/api";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: () => {
+    if (typeof window !== "undefined") {
+      const port = window.location.port;
+      if (port === "8081") {
+        throw redirect({ to: "/doctor-login" });
+      }
+      if (port === "8082") {
+        throw redirect({ to: "/admin-login" });
+      }
+    }
+  },
   head: () => ({
     meta: [
       { title: "Patient Portal — ACP Care" },
@@ -63,6 +74,24 @@ function AuthPage() {
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const port = window.location.port;
+      if (port === "8081") {
+        navigate({ to: "/doctor-login", replace: true });
+        return;
+      }
+      if (port === "8082") {
+        navigate({ to: "/admin-login", replace: true });
+        return;
+      }
+    }
+    const user = authService.getCurrentUser();
+    if (user && user.role === "patient") {
+      navigate({ to: "/patient-dashboard", replace: true });
+    }
+  }, [navigate]);
+
   const handleSuccess = () => navigate({ to: "/patient-dashboard" });
 
   return (
@@ -94,8 +123,8 @@ function AuthPage() {
             when it matters most.
           </motion.h1>
           <p className="mt-4 text-[15px] leading-relaxed text-white/85">
-            ACP Care helps you plan the care you want with clarity, dignity, and confidence —
-            guided by AI, protected by design.
+            ACP Care helps you plan the care you want with clarity, dignity, and confidence — guided
+            by AI, protected by design.
           </p>
         </div>
 

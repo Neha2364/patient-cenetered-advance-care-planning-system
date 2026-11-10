@@ -43,7 +43,12 @@ def create_ai_session():
             patient = PatientService.create_patient({'user_id': g.current_user.id}, performed_by_id=g.current_user.id)
 
         json_data = request.get_json(silent=True) or {}
-        language = json_data.get("language", "en")
+        language = json_data.get("language")
+        if not language:
+            if patient.preferred_language and "kannada" in patient.preferred_language.lower():
+                language = "kn"
+            else:
+                language = "en"
 
         result = AIService.create_session(
             patient_id=patient.patient_id,

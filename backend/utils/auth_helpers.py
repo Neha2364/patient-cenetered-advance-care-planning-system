@@ -5,13 +5,14 @@ from functools import wraps
 from backend.config import Config
 from backend.models.user import User
 
-def generate_token(user_id, email, role):
+def generate_token(user_id, email, role, must_change_password=False):
     """Utility to generate a JWT token for testing/integration purposes."""
     try:
         payload = {
             'user_id': user_id,
             'email': email,
             'role': role,
+            'must_change_password': bool(must_change_password),
             'exp': datetime.utcnow() + timedelta(hours=Config.JWT_EXPIRATION_HOURS),
             'iat': datetime.utcnow()
         }
@@ -76,6 +77,15 @@ def role_required(allowed_roles):
                     'error': 'Forbidden', 
                     'message': f"Access denied. Required roles: {', '.join(allowed_roles)}. Your role: {g.current_user.role}"
                 }), 403
+
+            # Enforce mandatory password change for doctor accounts
+            if getattr(g.current_user, 'must_change_password', False) and g.current_user.role == 'doctor':
+                if request.path not in ('/api/auth/change-password', '/api/doctor/change-password'):
+                    return jsonify({
+                        'error': 'Forbidden',
+                        'message': 'Password change required before accessing this resource.',
+                        'must_change_password': True
+                    }), 403
                 
             return f(*args, **kwargs)
         return decorated

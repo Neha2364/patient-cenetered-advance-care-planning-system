@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Stethoscope,
@@ -68,6 +68,17 @@ function DoctorLoginPage() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const user = authService.getCurrentUser();
+    if (user && user.role === "doctor") {
+      if (user.must_change_password) {
+        navigate({ to: "/doctor-dashboard/change-password", replace: true });
+      } else {
+        navigate({ to: "/doctor-dashboard", replace: true });
+      }
+    }
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -81,6 +92,13 @@ function DoctorLoginPage() {
           "This portal is for authorized doctors only. Please use your designated portal to sign in.",
         );
         setLoading(false);
+        return;
+      }
+
+      if (user.must_change_password) {
+        toast.info("Temporary password detected. Please set a new password to continue.");
+        setLoading(false);
+        navigate({ to: "/doctor-dashboard/change-password" });
         return;
       }
 

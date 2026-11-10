@@ -1,31 +1,30 @@
 import unittest
 import json
+from backend.config import Config
 from backend.app import create_app
 from backend.extensions import db
 from backend.models.user import User
 from backend.utils.auth_helpers import decode_token
+
+class TestConfig(Config):
+    TESTING = True
+    ENV = 'testing'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    AHCP_AI_SERVICE_API_KEY = 'test-secret'
+    JWT_SECRET_KEY = 'test-jwt-secret'
 
 class AuthTestCase(unittest.TestCase):
     """Test suite for User Authentication endpoints (register & login)."""
 
     def setUp(self):
         """Set up testing context and initialize clean database tables."""
-        self.app = create_app()
-        self.app.config['TESTING'] = True
-        self.app.config['ENV'] = 'testing'
+        self.app = create_app(TestConfig)
         self.client = self.app.test_client()
         self.app_context = self.app.app_context()
         self.app_context.push()
 
         # Re-create database tables
         db.create_all()
-
-        # Clean up existing data for test isolation
-        try:
-            db.session.execute(db.text("TRUNCATE TABLE audit_logs, generated_amds, dhrs, acp_preferences, patients, users CASCADE;"))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
 
     def tearDown(self):
         """Clean up databases and pop testing context."""
@@ -105,12 +104,11 @@ class AuthTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('password', json.loads(response.data)['message'])
 
-        # Test invalid role
+        # Test invalid email
         payload = {
-            "email": "badrole@test.com",
+            "email": "not-an-email",
             "password": "password123",
-            "full_name": "Bad Role",
-            "role": "caregiver" # Allowed: patient, doctor, admin
+            "full_name": "Bad Email",
         }
         response = self.client.post(
             '/api/auth/register',
@@ -118,7 +116,7 @@ class AuthTestCase(unittest.TestCase):
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn('role', json.loads(response.data)['message'])
+        self.assertIn('email', json.loads(response.data)['message'])
 
     def test_user_login_success(self):
         """Verify credentials validation and JWT token generation."""

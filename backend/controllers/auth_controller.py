@@ -1,15 +1,17 @@
-from flask import request, jsonify
+from flask import request, jsonify, g
 from backend.extensions import db
 from backend.models.user import User
-from backend.schemas.user import UserRegisterSchema, UserLoginSchema, UserSchema
-from backend.utils.auth_helpers import generate_token
+from backend.schemas.user import UserRegisterSchema, UserLoginSchema, UserSchema, ChangePasswordSchema
+from backend.utils.auth_helpers import generate_token, token_required
 from backend.services.admin_service import AdminService
+from backend.services.audit_service import AuditService
 from marshmallow import ValidationError
 
 # Instantiate schemas
 register_schema = UserRegisterSchema()
 login_schema = UserLoginSchema()
 user_schema = UserSchema()
+change_password_schema = ChangePasswordSchema()
 
 def format_validation_error(messages):
     """Format Marshmallow validation error dictionary into a clean string."""
@@ -93,7 +95,8 @@ def login():
             }), 401
 
         # Generate JWT token compatible with token_required decorator
-        token = generate_token(user.id, user.email, user.role)
+        must_change = bool(getattr(user, 'must_change_password', False))
+        token = generate_token(user.id, user.email, user.role, must_change_password=must_change)
         if isinstance(token, bytes):
             token = token.decode('utf-8')
 
@@ -101,7 +104,75 @@ def login():
             'token': token,
             'user_id': user.id,
             'full_name': user.full_name,
-            'role': user.role
+            'role': user.role,
+            'must_change_password': must_change,
+        }), 200
+
+    except ValidationError as err:
+        return jsonify({'error': 'Validation Error', 'message': format_validation_error(err.messages)}), 400
+    except Exception as e:
+        return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
+
+
+@token_required
+def change_password():
+    """Change the authenticated user's password (POST /api/auth/change-password).
+
+    Security:
+    - Only the authenticated user (via g.current_user) can change their own password.
+    - Requires verification of the current/temporary password.
+    - New password must be at least 6 characters and match confirmation.
+    - New password must be distinct from current password.
+    - Resets must_change_password to False upon successful change.
+    """
+    try:
+        user = g.current_user
+        json_data = request.get_json()
+        if not json_data:
+            return jsonify({'error': 'Bad Request', 'message': 'No input data provided'}), 400
+
+        validated_data = change_password_schema.load(json_data)
+        current_password = validated_data['current_password']
+        new_password = validated_data['new_password']
+        confirm_password = validated_data['confirm_password']
+
+        # Verify current password
+        if not user.check_password(current_password):
+            return jsonify({'error': 'Bad Request', 'message': 'Current password is incorrect.'}), 400
+
+        # Validate confirmation
+        if new_password != confirm_password:
+            return jsonify({'error': 'Validation Error', 'message': 'New password and confirmation do not match.'}), 400
+
+        # Ensure new password differs from current
+        if current_password == new_password:
+            return jsonify({'error': 'Validation Error', 'message': 'New password must be different from current password.'}), 400
+
+        # Update password and clear must_change_password flag
+        user.set_password(new_password)
+        user.must_change_password = False
+        db.session.commit()
+
+        # Audit log the action
+        AuditService.log_action(
+            patient_id=None,
+            action=f'{user.role.capitalize()}: Password changed',
+            performed_by_id=user.id,
+            remarks=f'Password changed for {user.email}',
+        )
+
+        # Generate refreshed token with must_change_password = False
+        new_token = generate_token(user.id, user.email, user.role, must_change_password=False)
+        if isinstance(new_token, bytes):
+            new_token = new_token.decode('utf-8')
+
+        return jsonify({
+            'message': 'Password changed successfully.',
+            'token': new_token,
+            'user_id': user.id,
+            'full_name': user.full_name,
+            'role': user.role,
+            'must_change_password': False,
         }), 200
 
     except ValidationError as err:

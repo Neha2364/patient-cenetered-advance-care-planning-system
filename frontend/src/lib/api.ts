@@ -1,7 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -33,7 +36,9 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
       if (typeof rawMsg === "string") {
         errMsg = rawMsg;
       } else if (Array.isArray(rawMsg)) {
-        errMsg = rawMsg.map((item) => (typeof item === "object" ? JSON.stringify(item) : String(item))).join("; ");
+        errMsg = rawMsg
+          .map((item) => (typeof item === "object" ? JSON.stringify(item) : String(item)))
+          .join("; ");
       } else if (typeof rawMsg === "object" && rawMsg !== null) {
         errMsg = Object.entries(rawMsg)
           .map(([key, val]) => `${key}: ${Array.isArray(val) ? val.join(", ") : val}`)
@@ -55,14 +60,21 @@ export async function downloadFile(path: string, filename: string): Promise<void
   const response = await fetch(`${API_BASE}${path}`, { headers: getHeaders() });
   if (!response.ok) {
     let message = "Unable to download the document.";
-    try { const body = await response.json(); message = body.message || body.error || message; } catch {}
+    try {
+      const body = await response.json();
+      message = body.message || body.error || message;
+    } catch {}
     throw new Error(message);
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  anchor.href = url; anchor.download = filename;
-  document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 // Authentication Service
 export const authService = {
@@ -80,8 +92,38 @@ export const authService = {
           full_name: data.full_name,
           role: data.role,
           email: payload.email,
-        })
+          must_change_password: Boolean(data.must_change_password),
+        }),
       );
+    }
+    return data;
+  },
+
+  async changePassword(payload: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) {
+    const data = await apiFetch<{
+      message: string;
+      token?: string;
+      user_id?: number;
+      role?: string;
+      must_change_password?: boolean;
+    }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (typeof window !== "undefined") {
+      if (data.token) {
+        localStorage.setItem("acp_token", data.token);
+      }
+      const currentUser = authService.getCurrentUser();
+      if (currentUser) {
+        currentUser.must_change_password = false;
+        localStorage.setItem("acp_user", JSON.stringify(currentUser));
+      }
     }
     return data;
   },
@@ -107,7 +149,13 @@ export const authService = {
     }
   },
 
-  getCurrentUser() {
+  getCurrentUser(): {
+    user_id: number;
+    full_name: string;
+    role: string;
+    email: string;
+    must_change_password?: boolean;
+  } | null {
     if (typeof window !== "undefined") {
       const user = localStorage.getItem("acp_user");
       return user ? JSON.parse(user) : null;
@@ -194,7 +242,12 @@ export const patientService = {
     return apiFetch(`/doctor/amd/${patientId}`);
   },
 
-  async downloadAMD(patientId: number, amdId?: number): Promise<void> { return downloadFile(`/amd/download/${patientId}${amdId ? `/${amdId}` : ""}`, "advance-medical-directive.pdf"); },
+  async downloadAMD(patientId: number, amdId?: number): Promise<void> {
+    return downloadFile(
+      `/amd/download/${patientId}${amdId ? `/${amdId}` : ""}`,
+      "advance-medical-directive.pdf",
+    );
+  },
 
   async getAuditLogs(patientId: number): Promise<any[]> {
     return apiFetch(`/audit-logs/patient/${patientId}`);
@@ -243,7 +296,11 @@ export const aiService = {
     });
   },
 
-  async sendMessage(sessionId: string, message: string, questionNumber?: number | null): Promise<AiChatResponse> {
+  async sendMessage(
+    sessionId: string,
+    message: string,
+    questionNumber?: number | null,
+  ): Promise<AiChatResponse> {
     return apiFetch("/ai/chat", {
       method: "POST",
       body: JSON.stringify({ session_id: sessionId, message, question_number: questionNumber }),
@@ -300,12 +357,20 @@ export const chatService = {
 
 // Doctor Dashboard Service
 export const doctorService = {
-  async getPatients(params?: { search?: string; language?: string; is_completed?: boolean; review_status?: string }): Promise<any[]> {
+  async getPatients(params?: {
+    search?: string;
+    language?: string;
+    is_completed?: boolean;
+    review_status?: string;
+  }): Promise<any[]> {
     const searchParams = new URLSearchParams();
     if (params?.search) searchParams.append("search", params.search);
-    if (params?.language && params.language !== "all") searchParams.append("language", params.language);
-    if (params?.is_completed !== undefined) searchParams.append("is_completed", String(params.is_completed));
-    if (params?.review_status && params.review_status !== "all") searchParams.append("review_status", params.review_status);
+    if (params?.language && params.language !== "all")
+      searchParams.append("language", params.language);
+    if (params?.is_completed !== undefined)
+      searchParams.append("is_completed", String(params.is_completed));
+    if (params?.review_status && params.review_status !== "all")
+      searchParams.append("review_status", params.review_status);
 
     const queryStr = searchParams.toString();
     return apiFetch(`/doctor/patients${queryStr ? `?${queryStr}` : ""}`);
@@ -324,6 +389,10 @@ export const doctorService = {
 
   async getAiDashboard(patientId: number): Promise<any> {
     return apiFetch(`/ai/doctor-dashboard?patient_id=${patientId}`);
+  },
+
+  async getAnalytics(): Promise<any> {
+    return apiFetch("/doctor/analytics");
   },
 };
 
@@ -364,7 +433,7 @@ export const adminService = {
       specialization?: string;
       hospital?: string;
       medical_registration_number?: string;
-    }
+    },
   ): Promise<any> {
     return apiFetch(`/admin/doctors/${userId}`, {
       method: "PUT",

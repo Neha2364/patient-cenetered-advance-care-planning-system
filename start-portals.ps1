@@ -20,16 +20,45 @@ Write-Host ""
 Write-Host "  ACP Care - Starting all portals" -ForegroundColor Cyan
 Write-Host ""
 
+# 0. Clean up stale processes on ports 8080, 8081, 8082
+$stalePorts = @(8080, 8081, 8082)
+foreach ($port in $stalePorts) {
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
+        if ($conns) {
+            foreach ($c in $conns) {
+                if ($c.OwningProcess -and $c.OwningProcess -gt 0) {
+                    Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    } catch {
+        # Ignore errors during cleanup
+    }
+}
+
 # 1. Patient Portal (Vite dev server on 8080)
 $frontendDir = Join-Path -Path $root -ChildPath "frontend"
 Write-Host "  [1/3] Starting Patient Portal (Vite dev server) on port 8080..." -ForegroundColor Green
 $patientJob = Start-Process -FilePath "cmd.exe" `
-  -ArgumentList "/c npm run dev -- --port 8080 --host 127.0.0.1" `
+  -ArgumentList "/c npm run dev -- --port 8080 --host 127.0.0.1 --strictPort" `
   -WorkingDirectory $frontendDir `
   -PassThru `
   -WindowStyle Normal
 
-Start-Sleep -Seconds 4
+# Wait until port 8080 is listening or timeout after 15 seconds
+$port8080Ready = $false
+for ($i = 0; $i -lt 15; $i++) {
+    Start-Sleep -Seconds 1
+    $conn = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue
+    if ($conn) {
+        $port8080Ready = $true
+        break
+    }
+}
+if (-not $port8080Ready) {
+    Write-Host "  Note: Port 8080 not yet detected as Listen, proceeding with proxy launch..." -ForegroundColor Yellow
+}
 
 # 2. Doctor Portal (proxy on 8081)
 $doctorProxy = Join-Path -Path $root -ChildPath "dev-proxy-doctor.cjs"
@@ -64,9 +93,19 @@ Write-Host ""
 Write-Host "  Press Ctrl+C to stop all portals." -ForegroundColor DarkGray
 Write-Host ""
 
-# Keep script alive
+# Keep script alive, cleanup on exit
 try {
   Wait-Process -Id $patientJob.Id
 } catch {
-  # Patient process ended
+  # Patient process ended or interrupted
+} finally {
+  if ($doctorJob -and -not $doctorJob.HasExited) {
+    Stop-Process -Id $doctorJob.Id -Force -ErrorAction SilentlyContinue
+  }
+  if ($adminJob -and -not $adminJob.HasExited) {
+    Stop-Process -Id $adminJob.Id -Force -ErrorAction SilentlyContinue
+  }
+  if ($patientJob -and -not $patientJob.HasExited) {
+    Stop-Process -Id $patientJob.Id -Force -ErrorAction SilentlyContinue
+  }
 }

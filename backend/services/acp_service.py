@@ -71,6 +71,9 @@ class ACPService:
         if status not in ('Pending Review', 'Reviewed', 'Rejected'):
             raise ValueError("Invalid review status. Must be Pending Review, Reviewed, or Rejected.")
 
+        if status == 'Reviewed' and not preferences.is_completed and preferences.completed_at is None:
+            raise ValueError("Cannot review or acknowledge an unsubmitted or incomplete Advance Care Plan.")
+
         preferences.review_status = status
         preferences.reviewed_by_doctor = doctor_user_id
         db.session.commit()

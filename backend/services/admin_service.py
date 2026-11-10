@@ -69,6 +69,7 @@ class AdminService:
                 'full_name': user.full_name,
                 'email': user.email,
                 'created_at': user.created_at.isoformat(),
+                'must_change_password': getattr(user, 'must_change_password', False),
                 'mobile_number': profile.mobile_number if profile else None,
                 'specialization': profile.specialization if profile else None,
                 'hospital': profile.hospital if profile else None,
@@ -90,6 +91,7 @@ class AdminService:
             'full_name': user.full_name,
             'email': user.email,
             'created_at': user.created_at.isoformat(),
+            'must_change_password': getattr(user, 'must_change_password', False),
             'mobile_number': profile.mobile_number if profile else None,
             'specialization': profile.specialization if profile else None,
             'hospital': profile.hospital if profile else None,
@@ -123,8 +125,13 @@ class AdminService:
         alphabet = string.ascii_letters + string.digits + '!@#$%'
         temp_password = ''.join(secrets.choice(alphabet) for _ in range(16))
 
-        # Create the user account
-        user = User(full_name=full_name, email=email, role='doctor')
+        # Create the user account with mandatory first-login password change
+        user = User(
+            full_name=full_name,
+            email=email,
+            role='doctor',
+            must_change_password=True,
+        )
         user.set_password(temp_password)
         db.session.add(user)
         db.session.flush()  # populate user.id before creating profile

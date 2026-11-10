@@ -78,6 +78,15 @@ def create_app(config_class=Config):
     with app.app_context():
         # Creates tables if they don't exist in Supabase PostgreSQL
         db.create_all()
+        # Safe idempotent schema update to ensure new columns exist on existing tables
+        try:
+            from sqlalchemy import text
+            db.session.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;")
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
     return app
 

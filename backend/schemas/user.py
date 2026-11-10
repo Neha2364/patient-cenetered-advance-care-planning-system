@@ -14,6 +14,7 @@ class UserSchema(ma.SQLAlchemyAutoSchema):
     email = fields.Email(required=True)
     full_name = fields.Str(required=True)
     role = fields.Str(required=True)
+    must_change_password = fields.Bool(dump_only=True)
 
 class UserRegisterSchema(Schema):
     """Validation schema for user registration payload.
@@ -29,3 +30,9 @@ class UserLoginSchema(Schema):
     """Validation schema for user login payload."""
     email = fields.Email(required=True)
     password = fields.Str(required=True)
+
+class ChangePasswordSchema(Schema):
+    """Validation schema for authenticated password change payload."""
+    current_password = fields.Str(required=True)
+    new_password = fields.Str(required=True, validate=validate.Length(min=6))
+    confirm_password = fields.Str(required=True, validate=validate.Length(min=6))

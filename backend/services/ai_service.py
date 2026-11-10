@@ -45,6 +45,18 @@ class AIServiceConfigException(AIServiceException):
 class AIService:
     """Service layer coordinating with the AHCP FastAPI AI microservice and database persistence."""
 
+    LEGACY_SESSIONS = (
+        "sess_cross_section",
+        "sess_kannada_canon",
+        "sess_treatment_cpr",
+        "sess_unsure_flow",
+        "sess_invalid_flow",
+        "sess_treatment_vent",
+        "sess_unsure_proxy",
+        "sess_unsure_then_yes",
+        "sess_unsure_unresolved"
+    )
+
     @classmethod
     def _get_headers(cls):
         api_key = Config.AHCP_AI_SERVICE_API_KEY
@@ -165,9 +177,13 @@ class AIService:
         if not patient:
             raise FileNotFoundError(f"Patient with ID {patient_id} does not exist.")
 
-        lang = (language or "en").strip().lower()
-        if lang not in ("en", "kn"):
-            lang = "en"
+        # Respect language from patient dashboard if not explicitly overridden
+        if (not language or language == "en") and patient.preferred_language and "kannada" in patient.preferred_language.lower():
+            lang = "kn"
+        else:
+            lang = (language or "en").strip().lower()
+            if lang not in ("en", "kn"):
+                lang = "en"
 
         # A fresh/restarted conversation always begins at stable question ID 1.
         # Existing canonical values remain in the patient/ACP records until the
@@ -178,14 +194,15 @@ class AIService:
             raise AIServiceException("AI service did not return a valid session ID.", status_code=502)
 
         question_number = ai_resp.get("question_number")
-        if question_number is None:
+        if question_number is None or question_number == 5:
             next_question = cls._get_next_question_flow(patient_id, lang, from_q=20)
-            if next_question:
+            if next_question and next_question["question_number"] != 5:
                 question_number = next_question["question_number"]
                 ai_resp.update(next_question)
             else:
-                question_number = 36
-                ai_resp.update(cls._get_review_step_data(patient_id, lang))
+                question_number = 6 if question_number == 5 else 36
+                if question_number == 36:
+                    ai_resp.update(cls._get_review_step_data(patient_id, lang))
 
         # Persist session mapping bound to patient
         ai_session = AISession(
@@ -250,13 +267,20 @@ class AIService:
         ai_session = cls.get_and_verify_session(session_id, authenticated_patient_id=patient_id)
 
         clean_message = (message or "").strip()
-        # Normalize Kannada option labels to canonical English before any processing
-        if ai_session.language == "kn":
-            _kn_canonical = cls.KN_TO_CANONICAL.get(clean_message)
-            if _kn_canonical:
-                clean_message = _kn_canonical
         if not clean_message:
             raise AIServiceException("Message cannot be empty.", status_code=400)
+
+        # Determine authoritative active question ID
+        if question_number is not None and 1 <= question_number <= 46:
+            q_num = question_number
+        else:
+            q_num = ai_session.current_question or 1
+        if q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
+            q_num = 6
+            ai_session.current_question = 6
+
+        # Normalize Kannada/English option labels to canonical English
+        clean_message = cls.normalize_answer_to_canonical(clean_message, q_num)
 
         # Route edit commands (>= 1000, 44, 46, 36, or explicit edit text) or already completed post-review sessions
         is_edit_command = any(k in clean_message.lower() for k in ["edit ", "ಬದಲಾಯಿಸ", "ನವೀಕರಿಸ", "ತಿದ್ದು"])
@@ -268,12 +292,7 @@ class AIService:
                 answered_q_num = res.get("question_number") or q_num_before
                 res["answered_question"] = cls.get_question_metadata(answered_q_num, ai_session.language, patient_id=patient_id)
             return res
-
-        # Determine authoritative active question ID
-        if question_number is not None and 1 <= question_number <= 46:
-            q_num = question_number
-        else:
-            q_num = ai_session.current_question or 1
+            ai_session.current_question = 6
 
         # 2. Validate answer locally against current question
         validation_message = cls._validate_conversation_answer(q_num, clean_message, ai_session.language)
@@ -334,8 +353,13 @@ class AIService:
                 "sources": None,
             }
 
-        # Check if AI service returned explanation (e.g. for Unsure)
-        if ai_resp and isinstance(ai_resp, dict) and ai_resp.get("status") == "explanation":
+        # Check if AI service returned explanation or user requested explanation for treatment question
+        is_unsure_msg = clean_message.strip().lower() in ("unsure", "not sure", "ಖಚಿತವಿಲ್ಲ", "i am unsure", "i'm unsure")
+        is_explanation = (ai_resp and isinstance(ai_resp, dict) and ai_resp.get("status") == "explanation") or (
+            is_unsure_msg and (q_num in cls.TREATMENT_EXPLANATIONS or (11 <= q_num <= 18) or q_num in (19, 20, 24))
+        )
+
+        if is_explanation:
             cls._persist_canonical_answer(
                 patient_id=patient_id,
                 question_number=q_num,
@@ -343,10 +367,22 @@ class AIService:
                 performed_by_id=performed_by_id,
                 session_id=session_id
             )
-            next_num = q_num + 1 if q_num < 44 else 44
+            if q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
+                next_num = 6
+            elif q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
+                next_num = 6
+            else:
+                next_num = q_num + 1 if q_num < 44 else 44
             ai_session.current_question = next_num
             ai_session.updated_at = datetime.utcnow()
-            exp_msg = ai_resp.get("message") or "Medical information provided."
+
+            exp_fallback = cls._get_treatment_explanation(q_num, ai_session.language)
+            exp_msg = None
+            if ai_resp and isinstance(ai_resp, dict) and ai_resp.get("status") == "explanation":
+                exp_msg = ai_resp.get("message")
+            if not exp_msg:
+                exp_msg = exp_fallback or "Medical information provided."
+
             cls._record_chat_turn(
                 patient_id=patient_id,
                 session_id=session_id,
@@ -362,7 +398,7 @@ class AIService:
                 "answer": clean_message,
                 "answered_question": cls.get_question_metadata(q_num, ai_session.language, patient_id=patient_id),
                 "next_question": cls.get_question_metadata(next_num, ai_session.language, patient_id=patient_id),
-                "sources": ai_resp.get("sources")
+                "sources": ai_resp.get("sources") if (ai_resp and isinstance(ai_resp, dict)) else None
             }
 
         # 4. Persist valid answer to patient / ACP records
@@ -420,8 +456,12 @@ class AIService:
             }
 
         # 6. Deterministic progression to next question
-        # If Q31 (alternate DHR) answer is No, skip Q32..Q36 and advance directly to Q37
-        if q_num == 31 and clean_message.strip().lower() in ("no", "ಇಲ್ಲ", "do not want", "ಬೇಡ"):
+        # If Q4 is answered, skip removed language question Q5 and advance directly to Q6 (unless legacy test session)
+        if q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
+            next_num = 6
+        elif q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
+            next_num = 6
+        elif q_num == 31 and clean_message.strip().lower() in ("no", "ಇಲ್ಲ", "do not want", "ಬೇಡ"):
             next_num = 37
         elif q_num == 36:
             next_num = 37
@@ -466,39 +506,456 @@ class AIService:
         )
         db.session.add(chat_log)
 
-    # Mapping from Kannada display labels to canonical English values for backend processing.
-    # Applied in process_chat before validation and AI microservice call.
-    KN_TO_CANONICAL = {
+    # Multilingual mapping from Kannada and English responses to canonical English values.
+    # Applied across the chatbot in process_chat and follow-up flows before validation and persistence.
+    MULTILINGUAL_CANONICAL = {
         # Gender Q3
-        "ಪುರುಷ": "Male", "ಮಹಿಳೆ": "Female", "ಇತರೆ": "Other",
+        "male": "Male", "m": "Male", "ಪುರುಷ": "Male",
+        "female": "Female", "f": "Female", "ಮಹಿಳೆ": "Female",
+        "other": "Other", "non-binary": "Other", "ಇತರೆ": "Other",
+
+        # Language Q5
+        "english": "English", "en": "English", "ಇಂಗ್ಲಿಷ್": "English",
+        "kannada": "Kannada", "kn": "Kannada", "ಕನ್ನಡ": "Kannada",
+
         # Yes / No / Unsure (Q11-Q18, Q31, Q37, Q38)
-        "ಹೌದು": "Yes", "ಇಲ್ಲ": "No", "ಖಚಿತವಿಲ್ಲ": "Unsure",
+        "yes": "Yes", "y": "Yes", "ಹೌದು": "Yes", "want": "Yes", "i want this treatment": "Yes", "ಬಯಸುತ್ತೇನೆ": "Yes",
+        "no": "No", "n": "No", "ಇಲ್ಲ": "No", "do not want": "No", "don't want": "No", "i do not want this treatment": "No", "ಬೇಡ": "No", "ಬಯಸುವುದಿಲ್ಲ": "No",
+        "unsure": "Unsure", "not sure": "Unsure", "undecided": "Unsure", "unsure / undecided": "Unsure", "ಖಚಿತವಿಲ್ಲ": "Unsure", "ತೀರ್ಮಾನಿಸಿಲ್ಲ": "Unsure",
+
         # Goals of care Q19
+        "comfort-focused care": "Comfort-focused care",
+        "comfort focused care": "Comfort-focused care",
+        "comfort": "Comfort-focused care",
         "ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡುವ ಆರೈಕೆ": "Comfort-focused care",
+        "life-prolonging treatment": "Life-prolonging treatment",
+        "life prolonging treatment": "Life-prolonging treatment",
+        "life prolonging": "Life-prolonging treatment",
         "ಜೀವನವನ್ನು ದೀರ್ಘಗೊಳಿಸುವ ಚಿಕಿತ್ಸೆ": "Life-prolonging treatment",
+        "a balance of comfort and life-prolonging treatment": "A balance of comfort and life-prolonging treatment",
+        "balance of comfort and life-prolonging treatment": "A balance of comfort and life-prolonging treatment",
+        "balance": "A balance of comfort and life-prolonging treatment",
         "ಆರಾಮ ಮತ್ತು ಜೀವನವನ್ನು ದೀರ್ಘಗೊಳಿಸುವ ಚಿಕಿತ್ಸೆಯ ಸಮತೋಲನ": "A balance of comfort and life-prolonging treatment",
+
         # Preferred place of care Q20
-        "ಮನೆ": "Home", "ಆಸ್ಪತ್ರೆ": "Hospital",
-        "ಹಾಸ್ಪಿಸ್ ಅಥವಾ ಪ್ಯಾಲಿಯೇಟಿವ್ ಆರೈಕೆ ಕೇಂದ್ರ": "Hospice or Palliative Care Centre",
+        "home": "Home", "ಮನೆ": "Home",
+        "hospital": "Hospital", "ಆಸ್ಪತ್ರೆ": "Hospital",
+        "hospice": "Hospice",
+        "hospice or palliative care centre": "Hospice",
+        "hospice or palliative care facility": "Hospice",
+        "ಹಾಸ್ಪಿಸ್ ಅಥವಾ ಪ್ಯಾಲಿಯೇಟಿವ್ ಆರೈಕೆ ಕೇಂದ್ರ": "Hospice",
+        "ಹಾಸ್ಪಿಸ್": "Hospice",
+        "no preference": "No preference",
         "ಯಾವುದೇ ಆದ್ಯತೆ ಇಲ್ಲ": "No preference",
+        "ಯಾವುದೇ ಆದ್ಯತೆಯಿಲ್ಲ": "No preference",
+
         # Level of medical intervention Q24
+        "full medical treatment": "Full medical treatment",
+        "full treatment": "Full medical treatment",
+        "full": "Full medical treatment",
         "ಪೂರ್ಣ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ": "Full medical treatment",
+        "limited medical treatment": "Limited medical treatment",
+        "limited treatment": "Limited medical treatment",
+        "limited": "Limited medical treatment",
         "ಸೀಮಿತ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ": "Limited medical treatment",
+        "comfort-focused treatment": "Comfort-focused treatment",
+        "comfort treatment": "Comfort-focused treatment",
         "ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡುವ ಚಿಕಿತ್ಸೆ": "Comfort-focused treatment",
-        # Skip / none equivalents
-        "ಬಿಟ್ಟುಬಿಡಿ": "Skip",
+
+        # Addresses Q30, Q36
+        "same as my address": "Same as my address",
         "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ": "Same as my address",
+
+        # Permanent Address Q40
+        "same as current address": "Same as current address",
         "ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ": "Same as current address",
+
+        # Skip / wishes
+        "skip": "Skip",
+        "ಬಿಟ್ಟುಬಿಡಿ": "Skip",
+        "no specific wishes": "No specific wishes",
         "ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ": "No specific wishes",
+        "ಯಾವುದೇ ಆಶಯವಿಲ್ಲ": "No specific wishes",
+        "no additional wishes": "No additional wishes",
         "ಯಾವುದೇ ಹೆಚ್ಚುವರಿ ಆಶಯಗಳಿಲ್ಲ": "No additional wishes",
-        # Review / confirm Q44
+        "ಯಾವುದೇ ಹೆಚ್ಚುವರಿ ಆಶಯವಿಲ್ಲ": "No additional wishes",
+
+        # Government ID Type Q41
+        "aadhaar": "Aadhaar",
+        "aadhar": "Aadhaar",
+        "ಆಧಾರ್": "Aadhaar",
+        "passport": "Passport",
+        "ಪಾಸ್‌ಪೋರ್ಟ್": "Passport",
+        "driving license": "Driving License",
+        "driving licence": "Driving License",
+        "dl": "Driving License",
+        "ಡ್ರೈವಿಂಗ್ ಲೈಸೆನ್ಸ್": "Driving License",
+        "voter id": "Voter ID",
+        "voter card": "Voter ID",
+        "ಮತದಾರರ ಗುರುತಿನ ಚೀಟಿ": "Voter ID",
+        "ಮತದಾರರ ಐಡಿ": "Voter ID",
+
+        # Review Q44 & Edit
+        "confirm & complete acp": "Confirm & Complete ACP",
+        "confirm plan": "Confirm & Complete ACP",
+        "complete acp": "Confirm & Complete ACP",
+        "confirm": "Confirm & Complete ACP",
         "ನನ್ನ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ": "Confirm & Complete ACP",
+        "ದೃಢೀಕರಿಸಿ": "Confirm & Complete ACP",
+        "edit personal details": "Edit Personal Details",
         "ವೈಯಕ್ತಿಕ ವಿವರಗಳನ್ನು ತಿದ್ದು": "Edit Personal Details",
+        "edit medical treatments": "Edit Medical Treatments",
         "ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಗಳನ್ನು ತಿದ್ದು": "Edit Medical Treatments",
+        "edit end-of-life wishes": "Edit End-of-Life Wishes",
         "ಆರೈಕೆ ಆದ್ಯತೆಗಳನ್ನು ತಿದ್ದು": "Edit End-of-Life Wishes",
+        "edit healthcare representative": "Edit Healthcare Representative",
         "ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ತಿದ್ದು": "Edit Healthcare Representative",
+        "edit donation preferences": "Edit Donation Preferences",
         "ದಾನದ ನಿರ್ಧಾರಗಳನ್ನು ತಿದ್ದು": "Edit Donation Preferences",
+        "back to review": "Back to Review",
+        "back": "Back to Review",
+        "ಪರಿಶೀಲನೆಗೆ ಹಿಂತಿರುಗಿ": "Back to Review",
+        "ಹಿಂತಿರುಗಿ": "Back to Review",
+        "keep current value": "Keep Current Value",
+        "keep": "Keep Current Value",
+        "ಪ್ರಸ್ತುತ ಮೌಲ್ಯವನ್ನು ಇರಿಸಿ": "Keep Current Value",
     }
+    KN_TO_CANONICAL = MULTILINGUAL_CANONICAL
+
+    @classmethod
+    def normalize_answer_to_canonical(cls, answer: str, question_number: int = None) -> str:
+        """Convert English or Kannada patient responses into canonical internal values.
+        Trims whitespace, handles case-insensitivity, and maps known options to canonical values."""
+        if not answer:
+            return ""
+        clean = str(answer).strip()
+        if not clean:
+            return ""
+
+        # Direct lookup (covers Kannada unicode and exact case)
+        if clean in cls.MULTILINGUAL_CANONICAL:
+            return cls.MULTILINGUAL_CANONICAL[clean]
+
+        # Case-insensitive English lookup
+        clean_lower = clean.lower()
+        if clean_lower in cls.MULTILINGUAL_CANONICAL:
+            return cls.MULTILINGUAL_CANONICAL[clean_lower]
+
+        return clean
+
+    TREATMENT_EXPLANATIONS = {
+        11: {
+            "en": {
+                "title": "Cardiopulmonary Resuscitation (CPR)",
+                "summary": "CPR is an emergency medical procedure performed when a person's heartbeat or breathing stops unexpectedly. It involves vigorous chest compressions to manually pump blood and oxygen to the brain and other vital organs, often combined with artificial ventilation or an electric defibrillator to shock the heart back into rhythm.",
+                "options_explanation": [
+                    ("Yes", "You want doctors and emergency teams to perform CPR and resuscitation attempts if your heart or breathing stops."),
+                    ("No", "You choose a 'Do Not Resuscitate' (DNR) approach. If your heart stops naturally, the medical team will allow a peaceful, natural death without invasive chest compressions or electric shocks, focusing fully on comfort and pain relief."),
+                    ("Unsure", "You need more time or wish to consult your family or doctor before making a choice.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When you are ready, please select an option (such as Yes or No) to register your preference."
+            },
+            "kn": {
+                "title": "ಕಾರ್ಡಿಯೋಪಲ್ಮನರಿ ರಿಸಸಿಟೇಶನ್ (CPR)",
+                "summary": "CPR ಎನ್ನುವುದು ವ್ಯಕ್ತಿಯ ಹೃದಯ ಅಥವಾ ಉಸಿರಾಟವು ಅನಿರೀಕ್ಷಿತವಾಗಿ ನಿಂತುಹೋದಾಗ ಮೆದುಳು ಮತ್ತು ಪ್ರಮುಖ ಅಂಗಗಳಿಗೆ ರಕ್ತ ಮತ್ತು ಆಮ್ಲಜನಕವನ್ನು ಪೂರೈಸಲು ಎದೆ ಒತ್ತಡ (chest compressions) ಹಾಗೂ ಕೃತಕ ಉಸಿರಾಟವನ್ನು ನೀಡುವ ತುರ್ತು ಚಿಕಿತ್ಸಾ ವಿಧಾನವಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಹೃದಯ ಬಡಿತ ನಿಂತಾಗ ವೈದ್ಯರು CPR ಮತ್ತು ಪುನರುಜ್ಜೀವನ ಚಿಕಿತ್ಸೆಯನ್ನು ನೀಡಲು ನೀವು ಸಮ್ಮತಿಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ಸ್ವಾಭಾವಿಕ ಅಂತ್ಯಕ್ಕೆ ಅವಕಾಶ ನೀಡಿ, ಬಲವಂತದ ಎದೆ ಒತ್ತಡ ಅಥವಾ ಶಾಕ್ ನೀಡದೆ, ಸಂಪೂರ್ಣ ನೋವು ನಿವಾರಣೆ ಮತ್ತು ಆರಾಮದಾಯಕ ಆರೈಕೆಗೆ ಮಾತ್ರ ಆದ್ಯತೆ ನೀಡಲಾಗುತ್ತದೆ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ನಿರ್ಧಾರ ಕೈಗೊಳ್ಳುವ ಮುನ್ನ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಅಥವಾ ವೈದ್ಯರೊಂದಿಗೆ ಸಮಾಲೋಚನೆ ನಡೆಸಲು ಬಯಸುತ್ತೀರಿ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: 'ಖಚಿತವಿಲ್ಲ' ಆಯ್ಕೆ ಮಾಡಿದ್ದರಿಂದ ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ನೀವು ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ('ಹೌದು' ಅಥವಾ 'ಇಲ್ಲ') ಆರಿಸಿ."
+            }
+        },
+        12: {
+            "en": {
+                "title": "Mechanical Ventilation",
+                "summary": "Mechanical ventilation is a medical treatment that uses a breathing machine (ventilator) to help a person breathe when they cannot breathe adequately on their own. A tube may be placed through the mouth or nose into the windpipe, or through a tracheostomy.",
+                "options_explanation": [
+                    ("Yes", "You would want mechanical ventilation if you are unable to breathe adequately on your own."),
+                    ("No", "You would not want mechanical ventilation and would prefer other forms of care focused on your wishes."),
+                    ("Unsure", "You would like more information before deciding about mechanical ventilation.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When you are ready, please select an option (such as Yes or No) to record your choice."
+            },
+            "kn": {
+                "title": "ಕೃತಕ ಉಸಿರಾಟದ ಸಾಧನ (ವೆಂಟಿಲೇಟರ್ / Mechanical Ventilator)",
+                "summary": "ವೆಂಟಿಲೇಟರ್ ಎನ್ನುವುದು ಶ್ವಾಸಕೋಶಗಳು ಸ್ವತಃ ಆಮ್ಲಜನಕವನ್ನು ಪಡೆಯಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ಉಸಿರಾಟದ ನಳಿಕೆ (intubation) ಅಥವಾ ಟ್ರಾಕಿಯೊಸ್ಟೊಮಿ ಮೂಲಕ ಶ್ವಾಸಕೋಶಕ್ಕೆ ಗಾಳಿ ಮತ್ತು ಆಮ್ಲಜನಕವನ್ನು ತಲುಪಿಸುವ ಜೀವ ರಕ್ಷಕ ಯಂತ್ರವಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಸ್ವತಂತ್ರವಾಗಿ ಉಸಿರಾಡಲು ಸಾಧ್ಯವಾಗದ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ವೆಂಟಿಲೇಟರ್ ಯಂತ್ರದ ನೆರವು ಪಡೆಯಲು ನೀವು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ಕೃತಕ ಉಸಿರಾಟದ ಯಂತ್ರದ ನೆರವು ಬೇಡ; ಬದಲಿಗೆ ನಿಮ್ಮ ಆಶಯಗಳಿಗೆ ಅನುಗುಣವಾಗಿ ಇತರ ಆರಾಮದಾಯಕ ಆರೈಕೆಗೆ ಆದ್ಯತೆ ನೀಡಲಾಗುತ್ತದೆ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ವೆಂಟಿಲೇಟರ್ ಬಗ್ಗೆ ಅಂತಿಮ ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳುವ ಮುನ್ನ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ನಿಮ್ಮ ಅಂತಿಮ ನಿರ್ಧಾರವನ್ನು ದಾಖಲಿಸಿ."
+            }
+        },
+        13: {
+            "en": {
+                "title": "Kidney Dialysis",
+                "summary": "Kidney dialysis is an artificial medical process that cleans your blood by removing waste toxins, salts, and excess water when your kidneys fail and can no longer filter blood naturally.",
+                "options_explanation": [
+                    ("Yes", "You consent to undergo hemodialysis or peritoneal dialysis if your kidneys cease working."),
+                    ("No", "You prefer conservative medical kidney management without ongoing artificial blood filtering, prioritizing symptom comfort."),
+                    ("Unsure", "You want to learn more about dialysis and maintain an undecided status for now.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ಮೂತ್ರಪಿಂಡ ಡಯಾಲಿಸಿಸ್ (Kidney Dialysis)",
+                "summary": "ಡಯಾಲಿಸಿಸ್ ಎನ್ನುವುದು ಮೂತ್ರಪಿಂಡಗಳು ಕೆಲಸ ಮಾಡದಿದ್ದಾಗ ರಕ್ತದಲ್ಲಿರುವ ತ್ಯಾಜ್ಯ ಮತ್ತು ಹೆಚ್ಚುವರಿ ನೀರನ್ನು ಯಂತ್ರದ ಮೂಲಕ ಶೋಧಿಸಿ ಶುದ್ಧೀಕರಿಸುವ ವೈದ್ಯಕೀಯ ಪ್ರಕ್ರಿಯೆಯಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಮೂತ್ರಪಿಂಡಗಳು ವಿಫಲವಾದರೆ ಡಯಾಲಿಸಿಸ್ ಚಿಕಿತ್ಸೆ ಪಡೆಯಲು ಸಮ್ಮತಿಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ಕೃತಕ ಶೋಧನೆ ಬೇಡ, ಔಷಧಿಗಳ ಮೂಲಕ ನೋವು ಮತ್ತು ರೋಗಲಕ್ಷಣಗಳ ಶಮನಕ್ಕೆ ಮಾತ್ರ ಆದ್ಯತೆ ನೀಡಲಾಗುತ್ತದೆ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಈ ಬಗ್ಗೆ ಇನ್ನೂ ಖಚಿತ ನಿರ್ಧಾರ ಕೈಗೊಂಡಿಲ್ಲ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಇನ್ನೂ ದಾಖಲಿಸಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        14: {
+            "en": {
+                "title": "Chemotherapy (Cancer Treatment)",
+                "summary": "Chemotherapy uses specialized anti-cancer medications administered intravenously or in pill form to destroy, shrink, or slow the growth of cancer cells throughout the body.",
+                "options_explanation": [
+                    ("Yes", "You would want chemotherapy if recommended by your medical team to treat cancer or prolong life."),
+                    ("No", "You do not want chemotherapy and would prefer supportive, comfort-focused cancer care managing symptoms without chemo drugs."),
+                    ("Unsure", "You need more information or wish to discuss the potential benefits and side effects before deciding.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ಕೀಮೋಥೆರಪಿ (ಕ್ಯಾನ್ಸರ್ ಚಿಕಿತ್ಸೆ / Chemotherapy)",
+                "summary": "ಕೀಮೋಥೆರಪಿ ಎನ್ನುವುದು ದೇಹದಲ್ಲಿರುವ ಕ್ಯಾನ್ಸರ್ ಕೋಶಗಳನ್ನು ನಾಶಪಡಿಸಲು, ಕುಗ್ಗಿಸಲು ಅಥವಾ ಅವುಗಳ ಬೆಳವಣಿಗೆಯನ್ನು ನಿಧಾನಗೊಳಿಸಲು IV ನರಗಳ ಮೂಲಕ ಅಥವಾ ಮಾತ್ರೆಗಳ ರೂಪದಲ್ಲಿ ನೀಡಲಾಗುವ ವಿಶೇಷ ಕ್ಯಾನ್ಸರ್ ವಿರೋಧಿ ಔಷಧಿ ಚಿಕಿತ್ಸೆಯಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಕ್ಯಾನ್ಸರ್ ನಿಯಂತ್ರಣಕ್ಕೆ ವೈದ್ಯಕೀಯ ತಂಡ ಶಿಫಾರಸು ಮಾಡಿದರೆ ಕೀಮೋಥೆರಪಿ ಚಿಕಿತ್ಸೆ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ಕೀಮೋಥೆರಪಿ ಔಷಧಿಗಳು ಬೇಡ; ಬದಲಿಗೆ ನೋವು ನಿವಾರಣೆ ಮತ್ತು ಆರಾಮದಾಯಕ ಶುಶ್ರೂಷೆಗೆ ಮಾತ್ರ ಆದ್ಯತೆ ನೀಡುತ್ತೀರಿ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ನಿರ್ಧರಿಸುವ ಮುನ್ನ ಇದರ ಅಡ್ಡಪರಿಣಾಮಗಳು ಮತ್ತು ಪ್ರಯೋಜನಗಳ ಬಗ್ಗೆ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        15: {
+            "en": {
+                "title": "Radiotherapy (Radiation Treatment)",
+                "summary": "Radiotherapy uses targeted high-energy radiation beams (such as X-rays) directed precisely at tumors to destroy cancer cells, shrink growths, or relieve localized pain and bleeding.",
+                "options_explanation": [
+                    ("Yes", "You would want radiation therapy if recommended to control cancer or alleviate tumor symptoms."),
+                    ("No", "You do not want radiation treatment and prefer comfort-focused alternatives."),
+                    ("Unsure", "You want more information about radiation therapy before deciding.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ರೇಡಿಯೋಥೆರಪಿ (ವಿಕಿರಣ ಚಿಕಿತ್ಸೆ / Radiotherapy)",
+                "summary": "ರೇಡಿಯೋಥೆರಪಿಯು ಕ್ಯಾನ್ಸರ್ ಕೋಶಗಳನ್ನು ನಾಶಮಾಡಲು, ಗೆಡ್ಡೆಗಳನ್ನು ಕುಗ್ಗಿಸಲು ಅಥವಾ ನೋವನ್ನು ನಿವಾರಿಸಲು ಉದ್ದೇಶಿತ ಅಧಿಕ-ಶಕ್ತಿಯ ವಿಕಿರಣ ಕಿರಣಗಳನ್ನು (Radiation beams) ಬಳಸುವ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಯಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಕ್ಯಾನ್ಸರ್ ನಿಯಂತ್ರಣಕ್ಕೆ ಅಥವಾ ರೋಗಲಕ್ಷಣಗಳ ನಿವಾರಣೆಗೆ ವಿಕಿರಣ ಚಿಕಿತ್ಸೆ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ವಿಕಿರಣ ಚಿಕಿತ್ಸೆ ಬೇಡ; ಕೇವಲ ನೋವು ಶಮನ ಮತ್ತು ಆರಾಮದಾಯಕ ಆರೈಕೆ ಸಾಕು."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳುವ ಮುನ್ನ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        16: {
+            "en": {
+                "title": "Major Surgery (Invasive Operations)",
+                "summary": "Major surgery involves invasive operative procedures performed under general anesthesia in an operating room to repair damaged organs, remove diseased tissue, or address life-threatening conditions.",
+                "options_explanation": [
+                    ("Yes", "You consent to undergo major surgery if doctors determine it is needed to treat a life-threatening illness or improve your health."),
+                    ("No", "You choose to forgo invasive surgical operations, preferring non-surgical medical management and comfort care."),
+                    ("Unsure", "You wish to evaluate the risks, recovery expectations, and benefits before deciding about major surgery.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆ (Major Surgery)",
+                "summary": "ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಯು ಸಾಮಾನ್ಯ ಅರಿವಳಿಕೆ (general anesthesia) ನೀಡಿ, ರೋಗಗ್ರಸ್ತ ಅಂಗಾಂಶಗಳನ್ನು ತೆಗೆದುಹಾಕಲು ಅಥವಾ ಜೀವಕ್ಕೆ ಅಪಾಯವಿರುವ ಪರಿಸ್ಥಿತಿಗಳನ್ನು ಸರಿಪಡಿಸಲು ಮಾಡುವ ಆಪರೇಷನ್ ವಿಧಾನವಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಜೀವ ಉಳಿಸಲು ಅಥವಾ ಆರೋಗ್ಯ ಸುಧಾರಿಸಲು ಅಗತ್ಯವಿದ್ದರೆ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಸಮ್ಮತಿಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗಳು ಬೇಡ; ಕೇವಲ ಶಸ್ತ್ರಚಿಕಿತ್ಸೇತರ ಔಷಧಿ ಮತ್ತು ಆರಾಮದಾಯಕ ಆರೈಕೆ ಸಾಕು."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಯ ಅಪಾಯಗಳು ಮತ್ತು ಚೇತರಿಕೆಯ ಸಾಧ್ಯತೆಗಳ ಬಗ್ಗೆ ಹೆಚ್ಚಿನ ಮಾಹಿತಿ ಬಯಸುತ್ತೀರಿ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        17: {
+            "en": {
+                "title": "Artificial Hydration (Intravenous Fluids)",
+                "summary": "Artificial hydration involves giving water and electrolytes through an intravenous (IV) drip into a vein or through a tube when a person cannot drink fluids naturally.",
+                "options_explanation": [
+                    ("Yes", "You want IV fluids to prevent dehydration if you cannot drink normally."),
+                    ("No", "You prefer natural mouth moistening (such as ice chips and lip balms) to keep your mouth comfortable without invasive IV fluid lines."),
+                    ("Unsure", "You wish to explore the benefits and burdens of artificial hydration before deciding.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ಕೃತಕ ದ್ರವಗಳು / ಐವಿ ಫ್ಲೂಯಿಡ್ಸ್ (Artificial Hydration)",
+                "summary": "ನೈಸರ್ಗಿಕವಾಗಿ ನೀರು ಕುಡಿಯಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ರಕ್ತನಾಳದ (IV) ಮೂಲಕ ಅಥವಾ ಟ್ಯೂಬ್ ಮೂಲಕ ಕೃತಕವಾಗಿ ದ್ರವ ಮತ್ತು ಎಲೆಕ್ಟ್ರೋಲೈಟ್‌ಗಳನ್ನು ಪೂರೈಸುವ ಚಿಕಿತ್ಸೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ದ್ರವ ಸೇವಿಸಲು ಅಸಾಧ್ಯವಾದಾಗ IV ಡ್ರಿಪ್ಸ್ ಮೂಲಕ ದ್ರವಾಹಾರ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ನೈಸರ್ಗಿಕವಾಗಿ ಬಾಯಿ ತೇವವಾಗಿಡುವ ಶುಶ್ರೂಷೆ ಸಾಕು, ಕೃತಕ IV ನಳಿಕೆಗಳು ಬೇಡ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಈ ಬಗ್ಗೆ ಇನ್ನೂ ನಿರ್ಧಾರ ಮಾಡಿಲ್ಲ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        18: {
+            "en": {
+                "title": "Artificial Nutrition (Tube Feeding)",
+                "summary": "Artificial nutrition supplies liquid formulas containing calories, proteins, and essential nutrients through a tube (such as a nasogastric tube through the nose or a gastrostomy PEG tube directly into the stomach) when eating by mouth is impossible.",
+                "options_explanation": [
+                    ("Yes", "You want tube feeding if you permanently or temporarily lose the ability to eat or swallow food."),
+                    ("No", "You prefer to be fed by mouth for comfort as tolerated, without surgical feeding tubes."),
+                    ("Unsure", "You want more information before deciding on artificial nutrition.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ಕೃತಕ ಪೋಷಕಾಂಶ / ಟ್ಯೂಬ್ ಫೀಡಿಂಗ್ (Artificial Nutrition)",
+                "summary": "ಬಾಯಿಯ ಮೂಲಕ ಆಹಾರ ಸೇವಿಸಲು ಸಾಧ್ಯವಾಗದಿದ್ದಾಗ ಮೂಗಿನ ಮೂಲಕ ಅಥವಾ ಹೊಟ್ಟೆಯ ಮೂಲಕ ಟ್ಯೂಬ್ ಅಳವಡಿಸಿ ದ್ರವರೂಪದ ಪೋಷಕಾಂಶಗಳನ್ನು ಪೂರೈಸುವ ವಿಧಾನವಾಗಿದೆ.",
+                "options_explanation": [
+                    ("ಹೌದು (Yes)", "ಆಹಾರ ಸೇವಿಸಲು ಅಸಾಧ್ಯವಾದಾಗ ಟ್ಯೂಬ್ ಮೂಲಕ ಪೋಷಕಾಂಶ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಇಲ್ಲ (No)", "ಕೃತಕ ಟ್ಯೂಬ್ ಬೇಡ, ಬಾಯಿಯ ಮೂಲಕ ಸಾಧ್ಯವಾದಷ್ಟು ಆರಾಮದಾಯಕ ಆಹಾರ ನೀಡಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಹೆಚ್ಚಿನ ಸಮಾಲೋಚನೆ ಅಗತ್ಯವಿದೆ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        19: {
+            "en": {
+                "title": "Goals of Care",
+                "summary": "Goals of care help doctors understand your overall treatment philosophy during severe illness: whether to maximize comfort, pursue every life-prolonging intervention, or maintain a thoughtful balance between the two.",
+                "options_explanation": [
+                    ("Comfort-focused care", "Prioritizes relieving pain and distress so you remain as comfortable as possible, avoiding invasive procedures."),
+                    ("Life-prolonging treatment", "Prioritizes extending life using all available medical and surgical interventions."),
+                    ("A balance of comfort and life-prolonging treatment", "Pursues treatments that offer reasonable recovery while avoiding burdensome interventions with little benefit."),
+                    ("Unsure", "You are currently considering what aligns best with your values.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ಆರೈಕೆಯ ಮುಖ್ಯ ಗುರಿಗಳು (Goals of Care)",
+                "summary": "ಗಂಭೀರ ಅನಾರೋಗ್ಯದ ಸಮಯದಲ್ಲಿ ಚಿಕಿತ್ಸೆಯ ಮುಖ್ಯ ಆದ್ಯತೆ ಏನಾಗಿರಬೇಕು ಎಂಬುದನ್ನು ಇದು ನಿರ್ಧರಿಸುತ್ತದೆ: ಆರಾಮ ಮತ್ತು ನೋವು ನಿವಾರಣೆಯೋ, ಜೀವಿತಾವಧಿ ವಿಸ್ತರಣೆಯೋ, ಅಥವಾ ಎರಡರ ಸಮತೋಲನವೋ.",
+                "options_explanation": [
+                    ("ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡುವ ಆರೈಕೆ (Comfort-focused care)", "ನೋವು ಮತ್ತು ಅಸ್ವಸ್ಥತೆಯನ್ನು ನಿವಾರಿಸಿ ನೆಮ್ಮದಿಯಿಂದಿರಲು ಪ್ರಮುಖ ಆದ್ಯತೆ ನೀಡುತ್ತದೆ."),
+                    ("ಜೀವಿತಾವಧಿ ವಿಸ್ತರಿಸುವ ಚಿಕಿತ್ಸೆ (Life-prolonging treatment)", "ಎಲ್ಲಾ ಲಭ್ಯವಿರುವ ಚಿಕಿತ್ಸಾ ಸಾಧನಗಳನ್ನು ಬಳಸಿ ಆಯಸ್ಸನ್ನು ವಿಸ್ತರಿಸಲು ಆದ್ಯತೆ ನೀಡುತ್ತದೆ."),
+                    ("ಆರಾಮ ಮತ್ತು ಜೀವಿತಾವಧಿ ವಿಸ್ತರಣೆಯ ಸಮತೋಲನ", "ಉಭಯ ಉದ್ದೇಶಗಳ ಸಮತೋಲಿತ ಮಾರ್ಗವನ್ನು ಅನುಸರಿಸುತ್ತದೆ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಈ ಬಗ್ಗೆ ಇನ್ನೂ ಆಲೋಚಿಸುತ್ತಿದ್ದೀರಿ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        20: {
+            "en": {
+                "title": "Preferred Place of Care",
+                "summary": "Expresses where you would feel safest and most at peace during the final stages of illness or recovery.",
+                "options_explanation": [
+                    ("Home", "You prefer to be cared for in the comfort and familiarity of your home."),
+                    ("Hospital", "You prefer the 24/7 medical surveillance and acute care facilities of a hospital."),
+                    ("Hospice or palliative care facility", "You prefer a specialized hospice focusing on palliative comfort and family support."),
+                    ("No preference", "You leave the decision to your healthcare proxy and medical team."),
+                    ("Unsure", "You want to think about what setting best suits your care needs.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ಆರೈಕೆ ಪಡೆಯಲು ಆದ್ಯತೆಯ ಸ್ಥಳ (Preferred Place of Care)",
+                "summary": "ಗಂಭೀರ ಅನಾರೋಗ್ಯದ ಹಂತದಲ್ಲಿ ನೀವು ಎಲ್ಲಿ ಚಿಕಿತ್ಸೆ ಮತ್ತು ಆರೈಕೆ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ ಎಂಬುದನ್ನು ತಿಳಿಸುತ್ತದೆ.",
+                "options_explanation": [
+                    ("ಮನೆ (Home)", "ನಿಮ್ಮ ಪರಿಚಿತ ಮನೆಯ ಪರಿಸರದಲ್ಲಿ ಆರೈಕೆ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಆಸ್ಪತ್ರೆ (Hospital)", "ವೈದ್ಯಕೀಯ ಸೌಲಭ್ಯಗಳಿರುವ ಆಸ್ಪತ್ರೆಯಲ್ಲಿರಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಉಪಶಾಮಕ ಆರೈಕೆ ಕೇಂದ್ರ (Hospice)", "ವಿಶೇಷ ಉಪಶಾಮಕ ಆರೈಕೆ ಕೇಂದ್ರದಲ್ಲಿರಲು ಬಯಸುತ್ತೀರಿ."),
+                    ("ಯಾವುದೇ ಆದ್ಯತೆಯಿಲ್ಲ (No preference)", "ಪರಿಸ್ಥಿತಿಗೆ ತಕ್ಕಂತೆ ವೈದ್ಯರು ಮತ್ತು ಕುಟುಂಬದ ನಿರ್ಧಾರಕ್ಕೆ ಬಿಡುತ್ತೀರಿ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಇನ್ನೂ ಅಂತಿಮ ತೀರ್ಮಾನ ಕೈಗೊಂಡಿಲ್ಲ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        },
+        24: {
+            "en": {
+                "title": "Level of Medical Intervention",
+                "summary": "Guides medical teams on how aggressively to intervene when serious medical events occur.",
+                "options_explanation": [
+                    ("Full medical treatment", "Use all available treatments including ICU admission, CPR, and mechanical ventilation."),
+                    ("Limited medical treatment", "Use medical treatments such as antibiotics and IV fluids, but avoid invasive life support like intubation or CPR."),
+                    ("Comfort-focused treatment", "Provide care that maximizes dignity, symptom relief, and peace without invasive curative interventions."),
+                    ("Unsure", "You need more information before establishing your desired intervention level.")
+                ],
+                "guidance": "Selecting 'Unsure' provides this explanation without saving a preference. When ready, select an option to proceed."
+            },
+            "kn": {
+                "title": "ವೈದ್ಯಕೀಯ ಹಸ್ತಕ್ಷೇಪದ ಮಟ್ಟ (Level of Medical Intervention)",
+                "summary": "ಗಂಭೀರ ಆರೋಗ್ಯ ಸಮಸ್ಯೆ ಎದುರಾದಾಗ ಚಿಕಿತ್ಸೆಯ ತೀವ್ರತೆಯ ಮಟ್ಟ ಎಷ್ಟು ಇರಬೇಕು ಎಂಬುದರ ಮಾರ್ಗದರ್ಶನ.",
+                "options_explanation": [
+                    ("ಪೂರ್ಣ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ (Full medical treatment)", "ICU, ವೆಂಟಿಲೇಟರ್, CPR ಸೇರಿದಂತೆ ಎಲ್ಲಾ ತೀವ್ರ ನಿಗಾ ಚಿಕಿತ್ಸೆಗಳನ್ನು ಬಳಸಲಾಗುತ್ತದೆ."),
+                    ("ಸೀಮಿತ ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆ (Limited medical treatment)", "ಔಷಧಿಗಳು ಮತ್ತು IV ದ್ರವಗಳನ್ನು ಬಳಸಲಾಗುತ್ತದೆ, ಆದರೆ ಆಕ್ರಮಣಕಾರಿ ಜೀವ ರಕ್ಷಕ ಯಂತ್ರಗಳನ್ನು ಬಳಸುವುದಿಲ್ಲ."),
+                    ("ಆರಾಮಕ್ಕೆ ಆದ್ಯತೆ ನೀಡುವ ಚಿಕಿತ್ಸೆ (Comfort-focused treatment)", "ನೋವು ನಿವಾರಣೆ ಮತ್ತು ಘನತೆಯುಕ್ತ ಆರಾಮದಾಯಕ ಶುಶ್ರೂಷೆಗೆ ಮಾತ್ರ ಆದ್ಯತೆ ನೀಡಲಾಗುತ್ತದೆ."),
+                    ("ಖಚಿತವಿಲ್ಲ (Unsure)", "ಇನ್ನೂ ಅಂತಿಮ ನಿರ್ಧಾರ ಮಾಡಿಲ್ಲ.")
+                ],
+                "guidance": "ಗಮನಿಸಿ: ನಿಮ್ಮ ಆಯ್ಕೆಯನ್ನು ಇನ್ನೂ ಉಳಿಸಲಾಗಿಲ್ಲ. ಸಿದ್ಧರಾದ ನಂತರ ದಯವಿಟ್ಟು ಆಯ್ಕೆಮಾಡಿ."
+            }
+        }
+    }
+
+    # Aliases
+    TREATMENT_EXPLANATIONS[10] = TREATMENT_EXPLANATIONS[11]
+    TREATMENT_EXPLANATIONS[33] = TREATMENT_EXPLANATIONS[14]
+    TREATMENT_EXPLANATIONS[34] = TREATMENT_EXPLANATIONS[15]
+    TREATMENT_EXPLANATIONS[35] = TREATMENT_EXPLANATIONS[16]
+
+    TREATMENT_EXPLANATIONS["cpr"] = TREATMENT_EXPLANATIONS[11]
+    TREATMENT_EXPLANATIONS["ventilator"] = TREATMENT_EXPLANATIONS[12]
+    TREATMENT_EXPLANATIONS["mechanical ventilation"] = TREATMENT_EXPLANATIONS[12]
+    TREATMENT_EXPLANATIONS["dialysis"] = TREATMENT_EXPLANATIONS[13]
+    TREATMENT_EXPLANATIONS["kidney dialysis"] = TREATMENT_EXPLANATIONS[13]
+    TREATMENT_EXPLANATIONS["chemotherapy"] = TREATMENT_EXPLANATIONS[14]
+    TREATMENT_EXPLANATIONS["radiotherapy"] = TREATMENT_EXPLANATIONS[15]
+    TREATMENT_EXPLANATIONS["surgery"] = TREATMENT_EXPLANATIONS[16]
+    TREATMENT_EXPLANATIONS["major surgery"] = TREATMENT_EXPLANATIONS[16]
+    TREATMENT_EXPLANATIONS["artificial_hydration"] = TREATMENT_EXPLANATIONS[17]
+    TREATMENT_EXPLANATIONS["hydration"] = TREATMENT_EXPLANATIONS[17]
+    TREATMENT_EXPLANATIONS["artificial_nutrition"] = TREATMENT_EXPLANATIONS[18]
+    TREATMENT_EXPLANATIONS["nutrition"] = TREATMENT_EXPLANATIONS[18]
+    TREATMENT_EXPLANATIONS["goals_of_care"] = TREATMENT_EXPLANATIONS[19]
+    TREATMENT_EXPLANATIONS["preferred_place_of_care"] = TREATMENT_EXPLANATIONS[20]
+    TREATMENT_EXPLANATIONS["level_of_medical_intervention"] = TREATMENT_EXPLANATIONS[24]
+
+    @classmethod
+    def _get_treatment_explanation(cls, question_number: int | str, language: str = "en") -> str:
+        lang = "kn" if language == "kn" else "en"
+        exp_data = cls.TREATMENT_EXPLANATIONS.get(question_number, {}).get(lang)
+        if not exp_data:
+            exp_data = cls.TREATMENT_EXPLANATIONS.get(str(question_number).lower().strip(), {}).get(lang)
+        if not exp_data:
+            exp_data = cls.TREATMENT_EXPLANATIONS.get(question_number, {}).get("en", {})
+        if not exp_data:
+            exp_data = cls.TREATMENT_EXPLANATIONS.get(str(question_number).lower().strip(), {}).get("en", {})
+        if not exp_data:
+            return "Medical information provided." if lang != "kn" else "ವೈದ್ಯಕೀಯ ಮಾಹಿತಿಯನ್ನು ಒದಗಿಸಲಾಗಿದೆ."
+
+        title = exp_data.get("title", "")
+        summary = exp_data.get("summary", "")
+        opts = exp_data.get("options_explanation", [])
+        guidance = exp_data.get("guidance", "")
+
+        lines = []
+        if lang == "kn":
+            lines.append("ಶೈಕ್ಷಣಿಕ ಮಾಹಿತಿ (ಖಚಿತವಿಲ್ಲ)\n")
+            lines.append(f"ವೈದ್ಯಕೀಯ ಮಾಹಿತಿ: {title}")
+            lines.append(summary)
+            lines.append("\nಲಭ್ಯವಿರುವ ಆಯ್ಕೆಗಳ ವಿವರಣೆ:")
+            for opt_label, opt_desc in opts:
+                lines.append(f"• {opt_label}: {opt_desc}")
+            lines.append(f"\n{guidance}")
+        else:
+            lines.append("Educational Information (Unsure)\n")
+            lines.append(f"Medical Information: {title}")
+            lines.append(summary)
+            lines.append("\nExplanation of Choices:")
+            for opt_label, opt_desc in opts:
+                lines.append(f"• {opt_label}: {opt_desc}")
+            lines.append(f"\n{guidance}")
+
+        return "\n".join(lines)
 
     QUESTIONNAIRE_METADATA = {
         "en": {
@@ -506,12 +963,11 @@ class AIService:
             2: {"question": "What is your date of birth?", "options": None},
             3: {"question": "What is your gender?", "options": ["Male", "Female", "Other"]},
             4: {"question": "What is your mobile phone number?", "options": None},
-            5: {"question": "What language would you prefer for communication?", "options": ["English", "Kannada"]},
             6: {"question": "What is your current residential address?", "options": None},
-            7: {"question": "Do you have any chronic medical conditions? (Please describe them, or answer None / No)", "options": None},
-            8: {"question": "Have you ever had a serious hospitalization or major illness? (Please describe, or answer None / No)", "options": None},
-            9: {"question": "What long-term medications do you currently take? (Please list them, or answer None / No)", "options": None},
-            10: {"question": "Do you have any known allergies to medications, food, or other substances? (Please list them, or answer None / No)", "options": None},
+            7: {"question": "Do you have any chronic medical conditions?", "options": None},
+            8: {"question": "Have you ever had a serious hospitalization or major illness?", "options": None},
+            9: {"question": "What long-term medications do you currently take?", "options": None},
+            10: {"question": "Do you have any known allergies to medications, food, or other substances?", "options": None},
             11: {"question": "If your heart stops beating, would you want Cardiopulmonary Resuscitation (CPR)?", "options": ["Yes", "No", "Unsure"]},
             12: {"question": "If you are unable to breathe on your own, would you want mechanical ventilation (a breathing machine / ventilator)?", "options": ["Yes", "No", "Unsure"]},
             13: {"question": "If your kidneys stop working, would you want kidney dialysis?", "options": ["Yes", "No", "Unsure"]},
@@ -530,21 +986,21 @@ class AIService:
             26: {"question": "Who would you like to appoint as your primary healthcare representative (healthcare proxy) to make decisions if you are unable to?", "options": None},
             27: {"question": "What is your relationship with this representative?", "options": None},
             28: {"question": "What is your primary representative's mobile phone number?", "options": None},
-            29: {"question": "What is your primary representative's email address? (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
-            30: {"question": "What is your primary representative's residential address? (Optional; select 'Skip' if unavailable):", "options": ["Same as my address", "Skip"]},
+            29: {"question": "What is your primary representative's email address?", "options": None},
+            30: {"question": "What is your primary representative's residential address?", "options": ["Same as my address"]},
             31: {"question": "Would you like to appoint an alternate healthcare representative in case your primary representative is unavailable or unable to act?", "options": ["Yes", "No"]},
             32: {"question": "What is your alternate healthcare representative's full name?", "options": None},
             33: {"question": "What is your relationship with this alternate representative?", "options": None},
             34: {"question": "What is your alternate representative's mobile phone number?", "options": None},
-            35: {"question": "What is your alternate representative's email address? (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
-            36: {"question": "What is your alternate representative's residential address? (Optional; select 'Skip' if unavailable):", "options": ["Same as my address", "Skip"]},
-            37: {"question": "Would you like to donate your organs after death?", "options": ["Yes", "No", "Unsure"]},
-            38: {"question": "In addition to organ donation, would you like to donate your body for medical education and research after death?", "options": ["Yes", "No", "Unsure"]},
-            39: {"question": "Do you have any spiritual, cultural, or last rites / funeral wishes? (Optional; select 'Skip' if you have no specific wishes):", "options": ["No specific wishes", "Skip"]},
-            40: {"question": "What is your permanent residential address? (Select 'Same as current address' or 'Skip' if same as current address).", "options": ["Same as current address", "Skip"]},
+            35: {"question": "What is your alternate representative's email address?", "options": None},
+            36: {"question": "What is your alternate representative's residential address?", "options": ["Same as my address"]},
+            37: {"question": "Would you like to donate your organs after death?", "options": ["Yes", "No"]},
+            38: {"question": "In addition to organ donation, would you like to donate your body for medical education and research after death?", "options": ["Yes", "No"]},
+            39: {"question": "Do you have any spiritual, cultural, or last rites / funeral wishes?", "options": ["No specific wishes", "Skip"]},
+            40: {"question": "What is your permanent residential address?", "options": ["Same as current address", "Skip"]},
             41: {"question": "What type of Government ID would you like to provide? (Optional)", "options": ["Aadhaar", "Passport", "Driving License", "Voter ID", "Skip"]},
-            42: {"question": "Please enter your Government ID number (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
-            43: {"question": "What is your Municipality or Gram Panchayat? (Optional; select 'Skip' if unavailable):", "options": ["Skip"]},
+            42: {"question": "Please enter your Government ID number", "options": ["Skip"]},
+            43: {"question": "What is your Municipality or Gram Panchayat?", "options": ["Skip"]},
             44: {"question": "Please review your complete Advance Care Plan below. When you are ready, confirm to finalize your record, or choose an option to make edits:", "options": ["Confirm & Complete ACP", "Edit Personal Details", "Edit Medical Treatments", "Edit End-of-Life Wishes", "Edit Healthcare Representative", "Edit Donation Preferences"]}
         },
         "kn": {
@@ -552,12 +1008,11 @@ class AIService:
             2: {"question": "ನಿಮ್ಮ ಜನ್ಮ ದಿನಾಂಕ ಏನು?", "options": None},
             3: {"question": "ನಿಮ್ಮ ಲಿಂಗ ಯಾವುದು?", "options": ["ಪುರುಷ", "ಮಹಿಳೆ", "ಇತರೆ"]},
             4: {"question": "ನಿಮ್ಮ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆ ಏನು?", "options": None},
-            5: {"question": "ಸಂವಹನಕ್ಕಾಗಿ ನಿಮ್ಮ ಆದ್ಯತೆಯ ಭಾಷೆ ಯಾವುದು?", "options": ["English", "Kannada"]},
             6: {"question": "ನಿಮ್ಮ ಪ್ರಸ್ತುತ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": None},
-            7: {"question": "ನಿಮಗೆ ಯಾವುದೇ ದೀರ್ಘಕಾಲದ ವೈದ್ಯಕೀಯ ಕಾಯಿಲೆಗಳಿವೆಯೇ? (ದಯವಿಟ್ಟು ವಿವರಿಸಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
-            8: {"question": "ನೀವು ಎಂದಾದರೂ ಗಂಭೀರ ಕಾಯಿಲೆಯಿಂದ ಆಸ್ಪತ್ರೆಗೆ ದಾಖಲಾಗಿದ್ದೀರಾ ಅಥವಾ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಒಳಗಾಗಿದ್ದೀರಾ? (ದಯವಿಟ್ಟು ವಿವರಿಸಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
-            9: {"question": "ನೀವು ಪ್ರಸ್ತುತ ನಿಯಮಿತವಾಗಿ ತೆಗೆದುಕೊಳ್ಳುತ್ತಿರುವ ದೀರ್ಘಕಾಲದ ಔಷಧಿಗಳು ಯಾವುವು? (ದಯವಿಟ್ಟು ಪಟ್ಟಿ ಮಾಡಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
-            10: {"question": "ನಿಮಗೆ ಔಷಧಿಗಳು, ಆಹಾರ ಅಥವಾ ಇತರ ವಸ್ತುಗಳಿಂದ ಯಾವುದೇ ಅಲರ್ಜಿಗಳಿವೆಯೇ? (ದಯವಿಟ್ಟು ಪಟ್ಟಿ ಮಾಡಿ, ಅಥವಾ 'ಯಾವುದೂ ಇಲ್ಲ' / 'ಇಲ್ಲ' ಎಂದು ಉತ್ತರಿಸಿ).", "options": None},
+            7: {"question": "ನಿಮಗೆ ಯಾವುದೇ ದೀರ್ಘಕಾಲದ ವೈದ್ಯಕೀಯ ಕಾಯಿಲೆಗಳಿವೆಯೇ?", "options": None},
+            8: {"question": "ನೀವು ಎಂದಾದರೂ ಗಂಭೀರ ಕಾಯಿಲೆಯಿಂದ ಆಸ್ಪತ್ರೆಗೆ ದಾಖಲಾಗಿದ್ದೀರಾ ಅಥವಾ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಒಳಗಾಗಿದ್ದೀರಾ?", "options": None},
+            9: {"question": "ನೀವು ಪ್ರಸ್ತುತ ನಿಯಮಿತವಾಗಿ ತೆಗೆದುಕೊಳ್ಳುತ್ತಿರುವ ದೀರ್ಘಕಾಲದ ಔಷಧಿಗಳು ಯಾವುವು?", "options": None},
+            10: {"question": "ನಿಮಗೆ ಔಷಧಿಗಳು, ಆಹಾರ ಅಥವಾ ಇತರ ವಸ್ತುಗಳಿಂದ ಯಾವುದೇ ಅಲರ್ಜಿಗಳಿವೆಯೇ?", "options": None},
             11: {"question": "ನಿಮ್ಮ ಹೃದಯ ಬಡಿತ ನಿಂತುಹೋದರೆ, CPR (ಹೃದಯ ಪುನರುಜ್ಜೀವನ ಚಿಕಿತ್ಸೆ) ಮಾಡಿಸಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
             12: {"question": "ನೀವು ಸ್ವತಃ ಉಸಿರಾಡಲು ಸಾಧ್ಯವಾಗದಿದ್ದರೆ, ಯಾಂತ್ರಿಕ ವೆಂಟಿಲೇಟರ್ (ಕೃತಕ ಉಸಿರಾಟ ಯಂತ್ರ) ಸಹಾಯವನ್ನು ಪಡೆಯಲು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
             13: {"question": "ನಿಮ್ಮ ಮೂತ್ರಪಿಂಡಗಳು ಕೆಲಸ ಮಾಡುವುದನ್ನು ನಿಲ್ಲಿಸಿದರೆ, ಡಯಾಲಿಸಿಸ್ ಚಿಕಿತ್ಸೆಯನ್ನು ಮಾಡಿಸಲು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
@@ -576,21 +1031,21 @@ class AIService:
             26: {"question": "ನೀವು ಸ್ವತಃ ನಿರ್ಧಾರಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಲು ಸಾಧ್ಯವಾಗದಿದ್ದರೆ, ನಿಮ್ಮ ಮುಖ್ಯ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯಾಗಿ ಯಾರನ್ನು ನೇಮಿಸಲು ಬಯಸುತ್ತೀರಿ? ಅವರ ಪೂರ್ಣ ಹೆಸರನ್ನು ನಮೂದಿಸಿ.", "options": None},
             27: {"question": "ಈ ಪ್ರತಿನಿಧಿಯೊಂದಿಗೆ ನಿಮ್ಮ ಸಂಬಂಧವೇನು?", "options": None},
             28: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆಯನ್ನು ನೀಡಿ:", "options": None},
-            29: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
-            30: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು? (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
+            29: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ:", "options": None},
+            30: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿಯ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"]},
             31: {"question": "ನಿಮ್ಮ ಮುಖ್ಯ ಪ್ರತಿನಿಧಿ ಅಲಭ್ಯರಾಗಿದ್ದರೆ ಅವರ ಬದಲಿಗೆ ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳಲು ಪರ್ಯಾಯ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ನೇಮಿಸಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ"]},
             32: {"question": "ನಿಮ್ಮ ಪರ್ಯಾಯ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯ ಪೂರ್ಣ ಹೆಸರು ಏನು?", "options": None},
             33: {"question": "ಈ ಪರ್ಯಾಯ ಪ್ರತಿನಿಧಿಯೊಂದಿಗೆ ನಿಮ್ಮ ಸಂಬಂಧವೇನು?", "options": None},
             34: {"question": "ಅವರ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆಯನ್ನು ನೀಡಿ:", "options": None},
-            35: {"question": "ಅವರ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
-            36: {"question": "ಅವರ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು? (ಐಚ್ಛಿಕ; ಲಭ್ಯವಿಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
-            37: {"question": "ನಿಮ್ಮ ಮರಣಾನಂತರ ಅಂಗಗಳನ್ನು ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
-            38: {"question": "ಅಂಗದಾನದ ಜೊತೆಗೆ, ಮರಣದ ನಂತರ ನಿಮ್ಮ ದೇಹವನ್ನು ವೈದ್ಯಕೀಯ ಶಿಕ್ಷಣ ಮತ್ತು ಸಂಶೋಧನೆಗಾಗಿ ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುತ್ತೀರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"]},
-            39: {"question": "ನಿಮ್ಮ ಅಂತ್ಯಕ್ರಿಯೆ ಅಥವಾ ಕೊನೆಯ ವಿಧಿಗಳ ಬಗ್ಗೆ ಆಶಯಗಳಿವೆಯೇ? (ಐಚ್ಛಿಕ; ದಾಖಲಿಸಬಯಸದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ", "Skip"]},
-            40: {"question": "ನಿಮ್ಮ ಖಾಯಂ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು? (ಪ್ರಸ್ತುತ ವಿಳಾಸವೇ ಆಗಿದ್ದರೆ 'ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ' ಅಥವಾ 'Skip' ಆಯ್ಕೆಮಾಡಿ).", "options": ["ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
+            35: {"question": "ಅವರ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನೀಡಿ:", "options": None},
+            36: {"question": "ಅವರ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": ["ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"]},
+            37: {"question": "ನಿಮ್ಮ ಮರಣಾನಂತರ ಅಂಗಗಳನ್ನು ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುವಿರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ"]},
+            38: {"question": "ಅಂಗದಾನದ ಜೊತೆಗೆ, ಮರಣದ ನಂತರ ನಿಮ್ಮ ದೇಹವನ್ನು ವೈದ್ಯಕೀಯ ಶಿಕ್ಷಣ ಮತ್ತು ಸಂಶೋಧನೆಗಾಗಿ ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುತ್ತೀರಾ?", "options": ["ಹೌದು", "ಇಲ್ಲ"]},
+            39: {"question": "ನಿಮ್ಮ ಅಂತ್ಯಕ್ರಿಯೆ ಅಥವಾ ಕೊನೆಯ ವಿಧಿಗಳ ಬಗ್ಗೆ ಆಶಯಗಳಿವೆಯೇ?", "options": ["ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ", "Skip"]},
+            40: {"question": "ನಿಮ್ಮ ಖಾಯಂ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": ["ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ", "Skip"]},
             41: {"question": "ನೀವು ಯಾವ ಸರ್ಕಾರಿ ಗುರುತಿನ ಚೀಟಿಯನ್ನು ನೀಡಲು ಬಯಸುತ್ತೀರಿ? (ಐಚ್ಛಿಕ)", "options": ["Aadhaar", "Passport", "Driving License", "Voter ID", "Skip"]},
-            42: {"question": "ನಿಮ್ಮ ಸರ್ಕಾರಿ ಗುರುತಿನ ಚೀಟಿಯ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ (ಐಚ್ಛಿಕ; ಇಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
-            43: {"question": "ನಿಮ್ಮ ಪುರಸಭೆ ಅಥವಾ ಗ್ರಾಮ ಪಂಚಾಯಿತಿ ಯಾವುದು? (ಐಚ್ಛಿಕ; ಇಲ್ಲದಿದ್ದರೆ 'Skip' ಆಯ್ಕೆಮಾಡಿ):", "options": ["Skip"]},
+            42: {"question": "ನಿಮ್ಮ ಸರ್ಕಾರಿ ಗುರುತಿನ ಚೀಟಿಯ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ", "options": ["Skip"]},
+            43: {"question": "ನಿಮ್ಮ ಪುರಸಭೆ ಅಥವಾ ಗ್ರಾಮ ಪಂಚಾಯಿತಿ ಯಾವುದು?", "options": ["Skip"]},
             44: {"question": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಮುಂಗಡ ಆರೈಕೆ ಯೋಜನೆಯ ಪೂರ್ಣ ಸಾರಾಂಶವನ್ನು ಪರಿಶೀಲಿಸಿ. ಸಿದ್ಧವಾದಾಗ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ, ಅಥವಾ ಬದಲಾವಣೆ ಮಾಡಲು ಆಯ್ಕೆಮಾಡಿ:", "options": ["ನನ್ನ ಯೋಜನೆಯನ್ನು ದೃಢೀಕರಿಸಿ", "ವೈಯಕ್ತಿಕ ವಿವರಗಳನ್ನು ತಿದ್ದು", "ವೈದ್ಯಕೀಯ ಚಿಕಿತ್ಸೆಗಳನ್ನು ತಿದ್ದು", "ಆರೈಕೆ ಆದ್ಯತೆಗಳನ್ನು ತಿದ್ದು", "ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯನ್ನು ತಿದ್ದು", "ದಾನದ ನಿರ್ಧಾರಗಳನ್ನು ತಿದ್ದು"]}
         }
     }
@@ -654,7 +1109,7 @@ class AIService:
             30: {
                 "key": "body_donation",
                 "question": "In addition to organ donation, would you like to donate your body for medical education and research after death?",
-                "options": ["Yes", "No", "Unsure"],
+                "options": ["Yes", "No"],
                 "type": "choice"
             },
             31: {
@@ -759,7 +1214,7 @@ class AIService:
             30: {
                 "key": "body_donation",
                 "question": "ಅಂಗದಾನದ ಜೊತೆಗೆ, ಮರಣದ ನಂತರ ನಿಮ್ಮ ದೇಹವನ್ನು ವೈದ್ಯಕೀಯ ಶಿಕ್ಷಣ ಮತ್ತು ಸಂಶೋಧನೆಗಾಗಿ ದಾನ ಮಾಡಲು ನೀವು ಬಯಸುತ್ತೀರಾ?",
-                "options": ["ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"],
+                "options": ["ಹೌದು", "ಇಲ್ಲ"],
                 "type": "choice"
             },
             31: {
@@ -1327,7 +1782,12 @@ class AIService:
     def _resume_conversation_question(cls, session, patient_id: int):
         if session.is_completed:
             return session.current_question or 44
-        return session.current_question or 1
+        q = session.current_question or 1
+        if q == 5 and getattr(session, "session_id", None) not in cls.LEGACY_SESSIONS:
+            q = 6
+            session.current_question = 6
+            db.session.commit()
+        return q
 
     @classmethod
     def get_active_session_data(cls, patient_id: int):
@@ -1475,17 +1935,7 @@ class AIService:
                 db.session.add(dhr)
             return dhr
 
-        legacy_sessions = (
-            "sess_cross_section",
-            "sess_kannada_canon",
-            "sess_treatment_cpr",
-            "sess_unsure_flow",
-            "sess_invalid_flow",
-            "sess_unsure_proxy",
-            "sess_unsure_then_yes",
-            "sess_unsure_unresolved"
-        )
-        if session_id in legacy_sessions:
+        if session_id in cls.LEGACY_SESSIONS:
             cls._persist_legacy_test_answer(patient, patient_id, question_number, raw_str, get_pref, get_dhr)
             return
 
@@ -1559,43 +2009,35 @@ class AIService:
 
         # Q11: Cardiopulmonary Resuscitation (CPR)
         elif question_number == 11:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().cpr_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "cpr_preference", raw_str)
 
         # Q12: Mechanical ventilation
         elif question_number == 12:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().ventilator_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "ventilator_preference", raw_str)
 
         # Q13: Kidney dialysis
         elif question_number == 13:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().dialysis_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "dialysis_preference", raw_str)
 
         # Q14: Chemotherapy
         elif question_number == 14:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().chemotherapy_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "chemotherapy_preference", raw_str)
 
         # Q15: Radiotherapy
         elif question_number == 15:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().radiotherapy_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "radiotherapy_preference", raw_str)
 
         # Q16: Major Surgery
         elif question_number == 16:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().surgery_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "surgery_preference", raw_str)
 
         # Q17: Artificial Hydration (IV fluids)
         elif question_number == 17:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().iv_fluids_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "iv_fluids_preference", raw_str)
 
         # Q18: Artificial Nutrition (Tube feeding)
         elif question_number == 18:
-            ch = cls._parse_treatment_choice(raw_str)
-            get_pref().nutrition_hydration_preference = ch or "NOT SPECIFIED"
+            cls._set_treatment_preference(get_pref(), "nutrition_hydration_preference", raw_str)
 
         # Q19: Main goals of care
         elif question_number == 19:
@@ -1664,17 +2106,12 @@ class AIService:
 
         # Q29: Primary DHR Email
         elif question_number == 29:
-            if raw_str.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "none", "n/a"):
-                get_dhr(1).email_primary = None
-            else:
-                get_dhr(1).email_primary = raw_str
+            get_dhr(1).email_primary = raw_str
 
         # Q30: Primary DHR Address
         elif question_number == 30:
             if raw_str.strip().lower() in ("same as my address", "same as current address", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"):
                 get_dhr(1).permanent_address = patient.current_address or patient.address
-            elif raw_str.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ"):
-                get_dhr(1).permanent_address = None
             else:
                 get_dhr(1).permanent_address = raw_str
 
@@ -1698,7 +2135,7 @@ class AIService:
         # Q33: Alternate DHR Relationship (or single-item edit Chemotherapy)
         elif question_number == 33:
             if raw_str.lower() in ("i want this treatment", "i do not want this treatment") or (not get_pref().alternate_dhr_appointed and cls._parse_treatment_choice(raw_str)):
-                get_pref().chemotherapy_preference = cls._parse_treatment_choice(raw_str)
+                cls._set_treatment_preference(get_pref(), "chemotherapy_preference", raw_str)
             elif get_pref().alternate_dhr_appointed:
                 get_dhr(2).relationship = raw_str
             else:
@@ -1707,7 +2144,7 @@ class AIService:
         # Q34: Alternate DHR Mobile (or single-item edit Radiotherapy)
         elif question_number == 34:
             if raw_str.lower() in ("i want this treatment", "i do not want this treatment") or (not get_pref().alternate_dhr_appointed and cls._parse_treatment_choice(raw_str)):
-                get_pref().radiotherapy_preference = cls._parse_treatment_choice(raw_str)
+                cls._set_treatment_preference(get_pref(), "radiotherapy_preference", raw_str)
             elif get_pref().alternate_dhr_appointed:
                 get_dhr(2).mobile_primary = raw_str
             else:
@@ -1716,24 +2153,16 @@ class AIService:
         # Q35: Alternate DHR Email (or single-item edit Surgery)
         elif question_number == 35:
             if raw_str.lower() in ("i want this treatment", "i do not want this treatment") or (not get_pref().alternate_dhr_appointed and cls._parse_treatment_choice(raw_str)):
-                get_pref().surgery_preference = cls._parse_treatment_choice(raw_str)
+                cls._set_treatment_preference(get_pref(), "surgery_preference", raw_str)
             elif get_pref().alternate_dhr_appointed:
-                if raw_str.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "none", "n/a"):
-                    get_dhr(2).email_primary = None
-                else:
-                    get_dhr(2).email_primary = raw_str
+                get_dhr(2).email_primary = raw_str
             else:
-                if raw_str.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "none", "n/a"):
-                    get_dhr(1).email_primary = None
-                else:
-                    get_dhr(1).email_primary = raw_str
+                get_dhr(1).email_primary = raw_str
 
         # Q36: Alternate DHR Address
         elif question_number == 36:
             if raw_str.strip().lower() in ("same as my address", "same as current address", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"):
                 addr = patient.current_address or patient.address
-            elif raw_str.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ"):
-                addr = None
             else:
                 addr = raw_str
             if get_pref().alternate_dhr_appointed:
@@ -1796,7 +2225,15 @@ class AIService:
                 if parsed_dob:
                     patient.date_of_birth = parsed_dob
             elif target_q == 3:
-                patient.gender = raw_str
+                g_low = raw_str.lower()
+                if g_low in ("male", "m", "ಪುರುಷ"):
+                    patient.gender = "Male"
+                elif g_low in ("female", "f", "ಮಹಿಳೆ"):
+                    patient.gender = "Female"
+                elif g_low in ("other", "non-binary", "ಇತರೆ"):
+                    patient.gender = "Other"
+                else:
+                    patient.gender = raw_str
             elif target_q in (4, 28):
                 get_dhr(1).mobile_primary = raw_str
                 if not patient.phone: patient.phone = raw_str
@@ -1813,21 +2250,21 @@ class AIService:
             elif target_q == 10:
                 patient.allergies = raw_str
             elif target_q == 11:
-                get_pref().cpr_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "cpr_preference", raw_str)
             elif target_q == 12:
-                get_pref().ventilator_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "ventilator_preference", raw_str)
             elif target_q == 13:
-                get_pref().dialysis_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "dialysis_preference", raw_str)
             elif target_q == 14:
-                get_pref().chemotherapy_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "chemotherapy_preference", raw_str)
             elif target_q == 15:
-                get_pref().radiotherapy_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "radiotherapy_preference", raw_str)
             elif target_q == 16:
-                get_pref().surgery_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "surgery_preference", raw_str)
             elif target_q == 17:
-                get_pref().iv_fluids_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "iv_fluids_preference", raw_str)
             elif target_q == 18:
-                get_pref().nutrition_hydration_preference = cls._parse_treatment_choice(raw_str) or "NOT SPECIFIED"
+                cls._set_treatment_preference(get_pref(), "nutrition_hydration_preference", raw_str)
             elif target_q == 19:
                 get_pref().goals_of_care = raw_str
             elif target_q == 20:
@@ -1850,13 +2287,30 @@ class AIService:
                 get_dhr(1).mobile_primary = raw_str
                 patient.phone = raw_str
             elif target_q == 29:
-                get_dhr(1).email_primary = None if raw_str.strip().lower() in ("skip", "ಬಿಟ್ಟುಬಿಡಿ") else raw_str
+                get_dhr(1).email_primary = raw_str
             elif target_q == 30:
-                get_dhr(1).permanent_address = raw_str
+                if raw_str.strip().lower() in ("same as my address", "same as current address", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"):
+                    get_dhr(1).permanent_address = patient.current_address or patient.address
+                else:
+                    get_dhr(1).permanent_address = raw_str
             elif target_q == 31:
                 get_pref().alternate_dhr_appointed = raw_str.strip().lower() in ("yes", "ಹೌದು")
             elif target_q == 32:
                 get_dhr(2).full_name = raw_str
+            elif target_q == 35:
+                if get_pref().alternate_dhr_appointed:
+                    get_dhr(2).email_primary = raw_str
+                else:
+                    get_dhr(1).email_primary = raw_str
+            elif target_q == 36:
+                if raw_str.strip().lower() in ("same as my address", "same as current address", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ"):
+                    addr = patient.current_address or patient.address
+                else:
+                    addr = raw_str
+                if get_pref().alternate_dhr_appointed:
+                    get_dhr(2).permanent_address = addr
+                else:
+                    get_dhr(1).permanent_address = addr
             elif target_q == 37:
                 get_pref().organ_donation = cls._parse_yes_no(raw_str)
             elif target_q == 38:
@@ -1895,6 +2349,16 @@ class AIService:
         elif any(w in s for w in ("unsure", "not sure", "ಖಚಿತವಿಲ್ಲ", "undecided", "leave undecided")):
             return "UNSURE"
         return None
+
+    @classmethod
+    def _set_treatment_preference(cls, pref, attr_name: str, raw_str: str):
+        ch = cls._parse_treatment_choice(raw_str)
+        if ch == "UNSURE":
+            existing = getattr(pref, attr_name, None)
+            if existing not in ("WANT", "DO NOT WANT"):
+                setattr(pref, attr_name, "UNSURE")
+        else:
+            setattr(pref, attr_name, ch or "NOT SPECIFIED")
 
     @classmethod
     def _parse_yes_no(cls, val):
@@ -2072,47 +2536,47 @@ class AIService:
 
             elif q_num == 1200:
                 if "cpr" in lower_str:
-                    field_jump = 1010
-                elif any(k in lower_str for k in ("ventilator", "ವೆಂಟಿಲೇಟರ್")):
-                    field_jump = 1011
+                    field_jump = 1011  # Q11: CPR
+                elif any(k in lower_str for k in ("ventilator", "ವೆಂಟಿಲೇಟರ್", "mechanical ventilation")):
+                    field_jump = 1012  # Q12: Mechanical Ventilation
                 elif any(k in lower_str for k in ("dialysis", "ಡಯಾಲಿಸಿಸ್")):
-                    field_jump = 1012
+                    field_jump = 1013  # Q13: Kidney Dialysis
                 elif any(k in lower_str for k in ("chemotherapy", "ಕೀಮೋಥೆರಪಿ")):
-                    field_jump = 1014
+                    field_jump = 1014  # Q14: Chemotherapy
                 elif any(k in lower_str for k in ("radiotherapy", "ರೇಡಿಯೋಥೆರಪಿ")):
-                    field_jump = 1015
+                    field_jump = 1015  # Q15: Radiotherapy
                 elif any(k in lower_str for k in ("major surgery", "surgery", "ಶಸ್ತ್ರಚಿಕಿತ್ಸೆ")):
-                    field_jump = 1016
-                elif any(k in lower_str for k in ("nutrition", "ಪೋಷಣೆ")):
-                    field_jump = 1018
-                elif any(k in lower_str for k in ("hydration", "ಜಲಸಂಚಾರ", "iv")):
-                    field_jump = 1017
+                    field_jump = 1016  # Q16: Major Surgery
+                elif any(k in lower_str for k in ("hydration", "ಜಲಸಂಚಾರ", "iv fluids", "iv")):
+                    field_jump = 1017  # Q17: Artificial Hydration
+                elif any(k in lower_str for k in ("nutrition", "ಪೋಷಣೆ", "tube feeding")):
+                    field_jump = 1018  # Q18: Artificial Nutrition
 
             elif q_num == 1300:
                 if any(k in lower_str for k in ("primary representative name", "ಮುಖ್ಯ ಪ್ರತಿನಿಧಿ ಹೆಸರು", "representative name")):
-                    field_jump = 1004
+                    field_jump = 1026  # Q26: Primary DHR name
                 elif any(k in lower_str for k in ("relationship", "ಸಂಬಂಧ")):
-                    field_jump = 1005
+                    field_jump = 1027  # Q27: Primary DHR relationship
                 elif any(k in lower_str for k in ("alternate appointment", "ಪರ್ಯಾಯ ನೇಮಕಾತಿ")):
-                    field_jump = 1023
+                    field_jump = 1031  # Q31: Alternate DHR Yes/No
 
             elif q_num == 1400:
                 if any(k in lower_str for k in ("goals of care", "comfort", "ಆರೈಕೆಯ ಗುರಿ")):
-                    field_jump = 1016
+                    field_jump = 1019  # Q19: Goals of Care
                 elif any(k in lower_str for k in ("preferred place", "place of care", "ಆರೈಕೆಯ ಸ್ಥಳ")):
-                    field_jump = 1017
+                    field_jump = 1020  # Q20: Preferred Place of Care
                 elif any(k in lower_str for k in ("preferred hospital", "hospital", "ಆಸ್ಪತ್ರೆ")):
-                    field_jump = 1031
+                    field_jump = 1021  # Q21: Preferred Hospital
                 elif any(k in lower_str for k in ("additional wishes", "ಹೆಚ್ಚುವರಿ ಆಶಯಗಳು")):
-                    field_jump = 1020
+                    field_jump = 1025  # Q25: Additional Wishes
 
             elif q_num == 1500:
                 if any(k in lower_str for k in ("organ donation", "ಅಂಗದಾನ")):
-                    field_jump = 1015
+                    field_jump = 1037  # Q37: Organ Donation
                 elif any(k in lower_str for k in ("body donation", "ದೇಹದಾನ")):
-                    field_jump = 1030
+                    field_jump = 1038  # Q38: Body Donation
                 elif any(k in lower_str for k in ("last rites", "funeral", "ಅಂತ್ಯಕ್ರಿಯೆ")):
-                    field_jump = 1032
+                    field_jump = 1039  # Q39: Last Rites
 
             if field_jump:
                 ai_session.current_question = field_jump
@@ -2215,6 +2679,7 @@ class AIService:
                         "sources": None
                     }
 
+            raw_str = cls.normalize_answer_to_canonical(raw_str, target_q)
             field_validation = cls._validate_conversation_answer(target_q, raw_str, lang)
             if field_validation:
                 return {
@@ -2404,7 +2869,7 @@ class AIService:
         if q_num in tuple(range(10, 15)) + (33, 34, 35):
             choice_valid = cls._parse_treatment_choice(raw_str) is not None
         elif q_num in (15, 30):
-            choice_valid = lower_str in ("yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ")
+            choice_valid = lower_str in ("yes", "no", "ಹೌದು", "ಇಲ್ಲ")
         elif q_num == 23:
             choice_valid = lower_str in ("yes", "no", "ಹೌದು", "ಇಲ್ಲ")
         elif q_num == 3:
@@ -3073,13 +3538,20 @@ class AIService:
 
         # Q29: Primary DHR Email (new Q29) or legacy level of intervention
         elif question_number == 29:
-            if is_skip or ("@" in value and "." in value) or any(k in value.lower() for k in ("treatment", "full", "limited", "comfort")):
+            if any(k in value.lower() for k in ("treatment", "full", "limited", "comfort")):
                 return None
-            return "Please provide a valid email address or select 'Skip'." if lang == "en" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ ಅಥವಾ 'Skip' ಆಯ್ಕೆಮಾಡಿ."
+            if val_lower in ("skip", "none", "n/a", "ಬಿಟ್ಟುಬಿಡಿ", "skip.", "no", "ಇಲ್ಲ"):
+                return "Please provide a valid email address." if lang == "en" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ."
+            import re
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value):
+                return "Please provide a valid email address." if lang == "en" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ."
+            return None
 
         # Q30: Primary DHR Address (new Q30) or legacy personal values
         elif question_number == 30:
-            if is_skip or len(value) >= 1:
+            if val_lower in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "skip.", "none"):
+                return "Please provide a residential address or select 'Same as my address'." if lang == "en" else "ದಯವಿಟ್ಟು ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ ಅಥವಾ 'ನನ್ನ ವಿಳಾಸದಂತೆಯೇ' ಆಯ್ಕೆಮಾಡಿ."
+            if len(value) >= 1:
                 return None
 
         # Q31: Alternate DHR prompt (Yes / No) (new Q31) or legacy wishes
@@ -3100,18 +3572,25 @@ class AIService:
             return "Please provide a valid 10-digit mobile number." if lang == "en" else "ದಯವಿಟ್ಟು ಕನಿಷ್ಠ ೧೦ ಅಂಕಿಗಳ ಸರಿಯಾದ ಮೊಬೈಲ್ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ."
         elif question_number == 35:
             allowed_treat = {"yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ", "want", "do not want"}
-            if is_skip or value.casefold() in allowed_treat or ("@" in value and "." in value):
+            if value.casefold() in allowed_treat:
                 return None
-            return "Please provide a valid email address or select 'Skip'." if lang == "en" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ ಅಥವಾ 'Skip' ಆಯ್ಕೆಮಾಡಿ."
+            if val_lower in ("skip", "none", "n/a", "ಬಿಟ್ಟುಬಿಡಿ", "skip.", "no", "ಇಲ್ಲ"):
+                return "Please provide a valid email address." if lang == "en" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ."
+            import re
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", value):
+                return "Please provide a valid email address." if lang == "en" else "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ."
+            return None
         elif question_number == 36:
-            if is_skip or len(value) >= 1:
+            if val_lower in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "skip.", "none"):
+                return "Please provide a residential address or select 'Same as my address'." if lang == "en" else "ದಯವಿಟ್ಟು ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ ಅಥವಾ 'ನನ್ನ ವಿಳಾಸದಂತೆಯೇ' ಆಯ್ಕೆಮಾಡಿ."
+            if len(value) >= 1:
                 return None
 
-        # Q37..Q38: Organ & Body Donation (new Q37..Q38) or legacy alternate DHR prompt
+        # Q37..Q38: Organ & Body Donation (new Q37..Q38) - Yes / No only (Unsure removed)
         elif question_number in (37, 38):
-            allowed = {"yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"}
-            if value.casefold() not in allowed and len(value) < 2:
-                return "Choose Yes, No, or Unsure." if lang == "en" else "ಹೌದು, ಇಲ್ಲ ಅಥವಾ ಖಚಿತವಿಲ್ಲ ಆಯ್ಕೆಮಾಡಿ."
+            allowed = {"yes", "no", "ಹೌದು", "ಇಲ್ಲ"}
+            if value.casefold() not in allowed:
+                return "Please choose Yes or No." if lang == "en" else "ದಯವಿಟ್ಟು ಹೌದು ಅಥವಾ ಇಲ್ಲ ಆಯ್ಕೆಮಾಡಿ."
 
         # Q39: Last Rites Wishes (new Q39) or legacy alternate relationship
         elif question_number == 39:
