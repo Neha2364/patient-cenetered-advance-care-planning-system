@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Search, AlertTriangle, RefreshCw } from "lucide-react";
-import { AdminShell } from "@/components/admin-shell";
 import { Input } from "@/components/ui/input";
 import { adminService } from "@/lib/api";
 
@@ -24,8 +23,7 @@ function ManagePatientsPage() {
   const list = patients ?? [];
 
   return (
-    <AdminShell>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Manage Patients</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -104,7 +102,6 @@ function ManagePatientsPage() {
           </div>
         </div>
       </div>
-    </AdminShell>
   );
 }
 

@@ -1,7 +1,7 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   ClipboardList,
@@ -15,9 +15,6 @@ import {
   Circle,
   CheckCircle2,
   AlertCircle,
-  HelpCircle,
-  Mic,
-  Send,
   Menu,
 } from "lucide-react";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -27,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { authService, patientService, chatService, aiService } from "@/lib/api";
+import { authService, patientService } from "@/lib/api";
 import {
   ACP_SECTIONS,
   completedSectionKeys,
@@ -45,7 +42,7 @@ export const Route = createFileRoute("/patient-dashboard/")({
       {
         name: "description",
         content:
-          "Track your Advance Care Planning progress, generate documents, and chat with the ACP assistant.",
+          "Track your Advance Care Planning progress, generate documents, and view your care timeline.",
       },
     ],
   }),
@@ -153,11 +150,24 @@ function PatientDashboard() {
         ))}
       </section>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex flex-col gap-6">
-          <ProgressTracker profile={profile} acp={acp} dhrs={dhrs} onStart={() => navigate({ to: "/patient-dashboard/acp/$section", params: { section: nextAcpSection(profile, acp, dhrs) } })} onSelect={(section) => navigate({ to: "/patient-dashboard/acp/$section", params: { section } })} />
-          <ChatCard patientId={patientId} profile={profile} />
-        </div>
+      <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <ProgressTracker
+          profile={profile}
+          acp={acp}
+          dhrs={dhrs}
+          onStart={() =>
+            navigate({
+              to: "/patient-dashboard/acp/$section",
+              params: { section: nextAcpSection(profile, acp, dhrs) },
+            })
+          }
+          onSelect={(section) =>
+            navigate({
+              to: "/patient-dashboard/acp/$section",
+              params: { section },
+            })
+          }
+        />
         <aside className="flex flex-col gap-6">
           <DocumentsCard acp={acp} onOpen={() => navigate({ to: "/patient-dashboard/documents" })} />
           <TimelineCard patientTimeline={patientTimeline} />
@@ -440,218 +450,3 @@ function TimelineCard({ patientTimeline }: { patientTimeline: any[] }) {
     </MotionCard>
   );
 }
-
-function ChatCard({ patientId, profile }: { patientId?: number; profile?: any }) {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState("");
-  const [isSending, setIsSending] = useState(false);
-
-  const { data: activeSessionResp } = useQuery({
-    queryKey: ["activeAiSession", patientId],
-    queryFn: aiService.getActiveSession,
-    enabled: !!patientId,
-  });
-  const activeSession = activeSessionResp?.session;
-
-  const { data: history = [] } = useQuery({
-    queryKey: ["chatHistory", patientId],
-    queryFn: () => chatService.getHistory(patientId!),
-    enabled: !!patientId,
-  });
-
-  const formattedMessages = useMemo(() => {
-    if (!history || history.length === 0) {
-      return [
-        {
-          from: "bot",
-          text: activeSession?.question
-            ? `Q${activeSession.current_question || 1}: ${activeSession.question}`
-            : "Welcome to ACP Care. When you're ready, we'll begin with your personal information to help draft your Advance Care Plan.",
-        },
-      ];
-    }
-    return history.flatMap((item: any) => [
-      { from: "user", text: item.user_message },
-      { from: "bot", text: item.bot_response },
-    ]);
-  }, [history, activeSession]);
-
-  const handleSendMessage = async (textToSend: string) => {
-    const text = textToSend.trim();
-    if (!text || !patientId || isSending) return;
-    setIsSending(true);
-    try {
-      let sessionId = activeSession?.session_id;
-      if (!sessionId) {
-        const lang = profile?.preferred_language?.toLowerCase().includes("kannada") ? "kn" : "en";
-        const created = await aiService.createSession(lang);
-        sessionId = created.session_id;
-      }
-      await aiService.sendMessage(sessionId, text);
-      setDraft("");
-      queryClient.invalidateQueries({ queryKey: ["chatHistory", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["activeAiSession", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patientAcp", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patientProfile"] });
-      queryClient.invalidateQueries({ queryKey: ["patientDhrs", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["patientAuditLogs", patientId] });
-      queryClient.invalidateQueries({ queryKey: ["aiDoctorDashboard", patientId] });
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const currentQNum = activeSession?.current_question;
-  const currentQText = activeSession?.question;
-  const currentOptions = activeSession?.options;
-
-  return (
-    <MotionCard className="p-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-brand-gradient text-white">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-foreground">ACP Assistant</div>
-            <div className="text-[11px] text-muted-foreground">
-              {activeSession?.is_completed ? (
-                <span className="font-medium text-success">Questionnaire Completed</span>
-              ) : currentQNum ? (
-                <span>
-                  Question {currentQNum} of 20 · <span className="font-medium text-primary">Active</span>
-                </span>
-              ) : (
-                <span>Questionnaire · <span className="text-primary">Ready</span></span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            to="/patient-dashboard/chat"
-            className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-          >
-            Full Assistant <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-          <Badge
-            variant="outline"
-            className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-              activeSession?.is_completed
-                ? "border-success/30 bg-success/10 text-success"
-                : "border-primary/25 bg-primary/5 text-primary"
-            )}
-          >
-            {activeSession?.is_completed ? "Completed" : "Ready"}
-          </Badge>
-        </div>
-      </div>
-
-      {/* Active Question Prompt & Choice Pills if session active */}
-      {!activeSession?.is_completed && currentQText && (
-        <div className="border-b border-primary/15 bg-primary/5 p-4">
-          <div className="flex items-start gap-2.5">
-            <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-foreground">
-                Q{currentQNum}: {currentQText}
-              </p>
-              {currentOptions && currentOptions.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {currentOptions.map((opt: string) => (
-                    <Button
-                      key={opt}
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => handleSendMessage(opt)}
-                      disabled={isSending}
-                      className="h-7 rounded-lg border border-border bg-white text-[11px] font-medium shadow-2xs hover:border-primary/40 hover:bg-primary/5"
-                    >
-                      {opt}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="max-h-[320px] space-y-4 overflow-y-auto px-5 py-5">
-        {formattedMessages.map((m: any, i: number) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.04 }}
-            className={cn("flex", m.from === "user" ? "justify-end" : "justify-start")}
-          >
-            <div
-              className={cn(
-                "max-w-[80%] rounded-[20px] px-4 py-3 text-sm leading-relaxed shadow-sm",
-                m.from === "user"
-                  ? "rounded-br-md bg-primary text-primary-foreground"
-                  : "rounded-bl-md bg-surface text-foreground"
-              )}
-            >
-              {m.text || m.message}
-            </div>
-          </motion.div>
-        ))}
-        {isSending && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="inline-block h-2 w-2 animate-ping rounded-full bg-primary" />
-            <span>Recording answer in care plan…</span>
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-border p-4">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage(draft);
-          }}
-          className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2"
-        >
-          <button
-            type="button"
-            className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground hover:bg-white hover:text-foreground"
-            aria-label="Voice input"
-          >
-            <Mic className="h-4 w-4" />
-          </button>
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={
-              activeSession?.is_completed
-                ? "Questionnaire completed. Click 'Full Assistant' to ask questions…"
-                : "Type your answer or click a choice above…"
-            }
-            disabled={isSending}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-60"
-          />
-          <button
-            type="submit"
-            disabled={!draft.trim() || isSending}
-            className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:scale-105 hover:bg-primary/90 disabled:opacity-40"
-            aria-label="Send"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </form>
-        <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          Responses update your clinical care plan and progress tracker in real time.
-        </p>
-      </div>
-    </MotionCard>
-  );
-}
-
-// Keep Link import used
-void Link;

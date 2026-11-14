@@ -21,10 +21,14 @@ interface RequireAuthenticationProps {
 export function RequireAuthentication({ children, allowedRoles }: RequireAuthenticationProps) {
   const navigate = useNavigate();
   const user = authService.getCurrentUser();
+  const token = authService.getToken();
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !token) {
+      if (user || token) {
+        authService.logout();
+      }
       toast.error("Please create an account or sign in to continue.");
       if (typeof window !== "undefined") {
         const port = window.location.port;
@@ -85,8 +89,8 @@ export function RequireAuthentication({ children, allowedRoles }: RequireAuthent
     }
   }, [navigate, user, allowedRoles, currentPath]);
 
-  // Don't render children if there is no user or if the user's role is wrong
-  if (!user) return null;
+  // Don't render children if there is no user or token, or if the user's role is wrong
+  if (!user || !token) return null;
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return null;
   }

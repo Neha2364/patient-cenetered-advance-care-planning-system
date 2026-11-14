@@ -322,6 +322,130 @@ class AdminPortalTestCase(unittest.TestCase):
         self.assertEqual(data['doctor']['specialization'], 'Neurology')
         self.assertEqual(data['doctor']['hospital'], 'New Hospital')
 
+    # ============================================================
+    # Test 21 — Admin can update doctor full profile including email & status
+    # ============================================================
+    def test_21_admin_can_update_doctor_all_fields(self):
+        resp = self.client.put(
+            f'/api/admin/doctors/{self.doctor_user.id}',
+            json={
+                'full_name': 'Dr. Updated Name',
+                'email': 'dr.updated@test.com',
+                'mobile_number': '+91 9988776655',
+                'specialization': 'Cardiology',
+                'hospital': 'Apollo Hospital',
+                'medical_registration_number': 'REG-998877',
+                'is_active': False,
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        doc = resp.get_json()['doctor']
+        self.assertEqual(doc['full_name'], 'Dr. Updated Name')
+        self.assertEqual(doc['email'], 'dr.updated@test.com')
+        self.assertEqual(doc['mobile_number'], '+91 9988776655')
+        self.assertEqual(doc['specialization'], 'Cardiology')
+        self.assertEqual(doc['hospital'], 'Apollo Hospital')
+        self.assertEqual(doc['medical_registration_number'], 'REG-998877')
+        self.assertFalse(doc['is_active'])
+
+        # Verify DB directly
+        db_user = db.session.get(User, self.doctor_user.id)
+        self.assertEqual(db_user.full_name, 'Dr. Updated Name')
+        self.assertEqual(db_user.email, 'dr.updated@test.com')
+        db_prof = DoctorProfile.query.filter_by(user_id=self.doctor_user.id).first()
+        self.assertFalse(db_prof.is_active)
+        self.assertEqual(db_prof.medical_registration_number, 'REG-998877')
+
+    # ============================================================
+    # Test 22 — Doctor email update with conflict is rejected (409)
+    # ============================================================
+    def test_22_doctor_email_conflict_rejected(self):
+        resp = self.client.put(
+            f'/api/admin/doctors/{self.doctor_user.id}',
+            json={'email': 'patient@test.com'},  # patient@test.com already exists
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 409, resp.data)
+        data = resp.get_json()
+        self.assertIn('already in use', data['message'].lower())
+
+    # ============================================================
+    # Test 23 — Admin get profile
+    # ============================================================
+    def test_23_admin_get_profile(self):
+        resp = self.client.get('/api/admin/profile', headers=self.admin_headers)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        data = resp.get_json()
+        self.assertEqual(data['email'], 'admin@test.com')
+        self.assertEqual(data['role'], 'admin')
+
+    # ============================================================
+    # Test 24 — Admin change email success
+    # ============================================================
+    def test_24_admin_change_email_success(self):
+        resp = self.client.post(
+            '/api/admin/change-email',
+            json={'new_email': 'new_admin@test.com', 'password': 'adminpass123'},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        data = resp.get_json()
+        self.assertEqual(data['email'], 'new_admin@test.com')
+        self.assertIn('token', data)
+
+        # Verify DB directly
+        user = db.session.get(User, self.admin_user.id)
+        self.assertEqual(user.email, 'new_admin@test.com')
+
+    # ============================================================
+    # Test 25 — Admin change email wrong password rejected (400)
+    # ============================================================
+    def test_25_admin_change_email_wrong_password_rejected(self):
+        resp = self.client.post(
+            '/api/admin/change-email',
+            json={'new_email': 'another_admin@test.com', 'password': 'wrong_password'},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 400, resp.data)
+        data = resp.get_json()
+        self.assertIn('password verification failed', data['message'].lower())
+
+    # ============================================================
+    # Test 26 — Admin change email duplicate rejected (409)
+    # ============================================================
+    def test_26_admin_change_email_duplicate_rejected(self):
+        resp = self.client.post(
+            '/api/admin/change-email',
+            json={'new_email': 'patient@test.com', 'password': 'adminpass123'},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 409, resp.data)
+        data = resp.get_json()
+        self.assertIn('already in use', data['message'].lower())
+
+    # ============================================================
+    # Test 27 — Admin change password success
+    # ============================================================
+    def test_27_admin_change_password_success(self):
+        resp = self.client.post(
+            '/api/admin/change-password',
+            json={
+                'current_password': 'adminpass123',
+                'new_password': 'new_admin_pass_123',
+                'confirm_password': 'new_admin_pass_123',
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        data = resp.get_json()
+        self.assertIn('token', data)
+
+        # Verify new password works and old fails
+        user = db.session.get(User, self.admin_user.id)
+        self.assertTrue(user.check_password('new_admin_pass_123'))
+        self.assertFalse(user.check_password('adminpass123'))
+
 
 if __name__ == '__main__':
     unittest.main()

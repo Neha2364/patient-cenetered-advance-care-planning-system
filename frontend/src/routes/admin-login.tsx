@@ -70,7 +70,8 @@ function AdminLoginPage() {
 
   useEffect(() => {
     const user = authService.getCurrentUser();
-    if (user && user.role === "admin") {
+    const token = authService.getToken();
+    if (user && token && user.role === "admin") {
       navigate({ to: "/admin-dashboard", replace: true });
     }
   }, [navigate]);

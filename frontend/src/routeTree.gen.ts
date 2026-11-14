@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PatientDashboardRouteImport } from './routes/patient-dashboard'
+import { Route as DoctorResetPasswordRouteImport } from './routes/doctor-reset-password'
 import { Route as DoctorLoginRouteImport } from './routes/doctor-login'
+import { Route as DoctorForgotPasswordRouteImport } from './routes/doctor-forgot-password'
 import { Route as DoctorDashboardRouteImport } from './routes/doctor-dashboard'
 import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as AdminDashboardRouteImport } from './routes/admin-dashboard'
@@ -40,9 +42,19 @@ const PatientDashboardRoute = PatientDashboardRouteImport.update({
   path: '/patient-dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DoctorResetPasswordRoute = DoctorResetPasswordRouteImport.update({
+  id: '/doctor-reset-password',
+  path: '/doctor-reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DoctorLoginRoute = DoctorLoginRouteImport.update({
   id: '/doctor-login',
   path: '/doctor-login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoctorForgotPasswordRoute = DoctorForgotPasswordRouteImport.update({
+  id: '/doctor-forgot-password',
+  path: '/doctor-forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DoctorDashboardRoute = DoctorDashboardRouteImport.update({
@@ -176,7 +188,9 @@ export interface FileRoutesByFullPath {
   '/admin-dashboard': typeof AdminDashboardRouteWithChildren
   '/admin-login': typeof AdminLoginRoute
   '/doctor-dashboard': typeof DoctorDashboardRouteWithChildren
+  '/doctor-forgot-password': typeof DoctorForgotPasswordRoute
   '/doctor-login': typeof DoctorLoginRoute
+  '/doctor-reset-password': typeof DoctorResetPasswordRoute
   '/patient-dashboard': typeof PatientDashboardRouteWithChildren
   '/admin-dashboard/doctors': typeof AdminDashboardDoctorsRouteWithChildren
   '/admin-dashboard/patients': typeof AdminDashboardPatientsRoute
@@ -202,7 +216,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin-login': typeof AdminLoginRoute
   '/doctor-dashboard': typeof DoctorDashboardRouteWithChildren
+  '/doctor-forgot-password': typeof DoctorForgotPasswordRoute
   '/doctor-login': typeof DoctorLoginRoute
+  '/doctor-reset-password': typeof DoctorResetPasswordRoute
   '/admin-dashboard/doctors': typeof AdminDashboardDoctorsRouteWithChildren
   '/admin-dashboard/patients': typeof AdminDashboardPatientsRoute
   '/admin-dashboard/settings': typeof AdminDashboardSettingsRoute
@@ -229,7 +245,9 @@ export interface FileRoutesById {
   '/admin-dashboard': typeof AdminDashboardRouteWithChildren
   '/admin-login': typeof AdminLoginRoute
   '/doctor-dashboard': typeof DoctorDashboardRouteWithChildren
+  '/doctor-forgot-password': typeof DoctorForgotPasswordRoute
   '/doctor-login': typeof DoctorLoginRoute
+  '/doctor-reset-password': typeof DoctorResetPasswordRoute
   '/patient-dashboard': typeof PatientDashboardRouteWithChildren
   '/admin-dashboard/doctors': typeof AdminDashboardDoctorsRouteWithChildren
   '/admin-dashboard/patients': typeof AdminDashboardPatientsRoute
@@ -258,7 +276,9 @@ export interface FileRouteTypes {
     | '/admin-dashboard'
     | '/admin-login'
     | '/doctor-dashboard'
+    | '/doctor-forgot-password'
     | '/doctor-login'
+    | '/doctor-reset-password'
     | '/patient-dashboard'
     | '/admin-dashboard/doctors'
     | '/admin-dashboard/patients'
@@ -284,7 +304,9 @@ export interface FileRouteTypes {
     | '/'
     | '/admin-login'
     | '/doctor-dashboard'
+    | '/doctor-forgot-password'
     | '/doctor-login'
+    | '/doctor-reset-password'
     | '/admin-dashboard/doctors'
     | '/admin-dashboard/patients'
     | '/admin-dashboard/settings'
@@ -310,7 +332,9 @@ export interface FileRouteTypes {
     | '/admin-dashboard'
     | '/admin-login'
     | '/doctor-dashboard'
+    | '/doctor-forgot-password'
     | '/doctor-login'
+    | '/doctor-reset-password'
     | '/patient-dashboard'
     | '/admin-dashboard/doctors'
     | '/admin-dashboard/patients'
@@ -338,7 +362,9 @@ export interface RootRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRouteWithChildren
   AdminLoginRoute: typeof AdminLoginRoute
   DoctorDashboardRoute: typeof DoctorDashboardRouteWithChildren
+  DoctorForgotPasswordRoute: typeof DoctorForgotPasswordRoute
   DoctorLoginRoute: typeof DoctorLoginRoute
+  DoctorResetPasswordRoute: typeof DoctorResetPasswordRoute
   PatientDashboardRoute: typeof PatientDashboardRouteWithChildren
 }
 
@@ -351,11 +377,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PatientDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/doctor-reset-password': {
+      id: '/doctor-reset-password'
+      path: '/doctor-reset-password'
+      fullPath: '/doctor-reset-password'
+      preLoaderRoute: typeof DoctorResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/doctor-login': {
       id: '/doctor-login'
       path: '/doctor-login'
       fullPath: '/doctor-login'
       preLoaderRoute: typeof DoctorLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doctor-forgot-password': {
+      id: '/doctor-forgot-password'
+      path: '/doctor-forgot-password'
+      fullPath: '/doctor-forgot-password'
+      preLoaderRoute: typeof DoctorForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/doctor-dashboard': {
@@ -631,7 +671,9 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDashboardRoute: AdminDashboardRouteWithChildren,
   AdminLoginRoute: AdminLoginRoute,
   DoctorDashboardRoute: DoctorDashboardRouteWithChildren,
+  DoctorForgotPasswordRoute: DoctorForgotPasswordRoute,
   DoctorLoginRoute: DoctorLoginRoute,
+  DoctorResetPasswordRoute: DoctorResetPasswordRoute,
   PatientDashboardRoute: PatientDashboardRouteWithChildren,
 }
 export const routeTree = rootRouteImport

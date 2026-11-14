@@ -162,19 +162,28 @@ class AdminService:
     def update_doctor(
         user_id: int,
         full_name: str = None,
+        email: str = None,
         mobile_number: str = None,
         specialization: str = None,
         hospital: str = None,
         medical_registration_number: str = None,
+        is_active: bool = None,
         performed_by_id: int = None,
     ) -> dict:
-        """Update a doctor's name and profile fields. Role is never changed here."""
+        """Update a doctor's name, email, profile fields, and status. Role is never changed here."""
         user = User.query.filter_by(id=user_id, role='doctor').first()
         if not user:
             raise FileNotFoundError(f'Doctor with user_id={user_id} not found.')
 
         if full_name:
-            user.full_name = full_name
+            user.full_name = full_name.strip()
+
+        if email:
+            email_clean = email.strip().lower()
+            existing = User.query.filter(User.email == email_clean, User.id != user_id).first()
+            if existing:
+                raise ValueError(f"Email '{email_clean}' is already in use by another user.")
+            user.email = email_clean
 
         profile = DoctorProfile.query.filter_by(user_id=user_id).first()
         if not profile:
@@ -182,13 +191,17 @@ class AdminService:
             db.session.add(profile)
 
         if mobile_number is not None:
-            profile.mobile_number = mobile_number
+            profile.mobile_number = mobile_number.strip() if mobile_number else None
         if specialization is not None:
-            profile.specialization = specialization
+            profile.specialization = specialization.strip() if specialization else None
         if hospital is not None:
-            profile.hospital = hospital
+            profile.hospital = hospital.strip() if hospital else None
         if medical_registration_number is not None:
-            profile.medical_registration_number = medical_registration_number
+            profile.medical_registration_number = (
+                medical_registration_number.strip() if medical_registration_number else None
+            )
+        if is_active is not None:
+            profile.is_active = bool(is_active)
 
         profile.updated_at = datetime.utcnow()
         db.session.commit()

@@ -1,15 +1,21 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
-import { AdminShell } from "@/components/admin-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { adminService } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin-dashboard/doctors/$userId")({
   head: () => ({ meta: [{ title: "Doctor Details — ACP Care Admin" }] }),
-  component: DoctorDetailPage,
+  component: DoctorDetailLayout,
 });
+
+function DoctorDetailLayout() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const isEdit = pathname.endsWith("/edit") || pathname.endsWith("/edit/");
+  return isEdit ? <Outlet /> : <DoctorDetailPage />;
+}
 
 function DoctorDetailPage() {
   const { userId } = Route.useParams();
@@ -21,8 +27,7 @@ function DoctorDetailPage() {
   });
 
   return (
-    <AdminShell>
-      <div className="mx-auto max-w-lg space-y-6">
+    <div className="mx-auto max-w-lg space-y-6">
         <div className="flex items-center gap-3">
           <Link to="/admin-dashboard/doctors">
             <button className="rounded-xl p-2 text-muted-foreground hover:bg-surface hover:text-foreground">
@@ -87,7 +92,6 @@ function DoctorDetailPage() {
           </div>
         )}
       </div>
-    </AdminShell>
   );
 }
 

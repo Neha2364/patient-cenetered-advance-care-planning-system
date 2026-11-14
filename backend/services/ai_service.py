@@ -238,7 +238,166 @@ class AIService:
         }
 
     # -------------------------------------------------------------
-    # 3. Session ownership verification
+    # 3. Restart session – resets ACP progress and creates new session
+    # -------------------------------------------------------------
+    @classmethod
+    def restart_session(cls, patient_id: int, language: str = "en", performed_by_id: int = None):
+        """
+        Restart the ACP questionnaire for a patient from scratch.
+
+        Rules:
+        - If the existing ACP plan is submitted/reviewed, preserve it and create
+          a new draft (reset fields in-place only when it is a draft plan).
+        - For draft plans: reset all ACPPreference clinical fields to defaults.
+        - Delete all DHR records so they are re-entered fresh.
+        - Delete ChatHistory for the current patient.
+        - Mark all existing AISession rows for this patient as completed so they
+          are no longer 'active', then create a brand-new session starting at Q1.
+        """
+        patient = Patient.query.get(patient_id)
+        if not patient:
+            raise FileNotFoundError(f"Patient with ID {patient_id} does not exist.")
+
+        # Determine language
+        if (not language or language == "en") and patient.preferred_language and "kannada" in patient.preferred_language.lower():
+            lang = "kn"
+        else:
+            lang = (language or "en").strip().lower()
+            if lang not in ("en", "kn"):
+                lang = "en"
+
+        pref = ACPPreference.query.filter_by(patient_id=patient_id).first()
+        # A plan is "submitted or reviewed" only when the patient has explicitly
+        # confirmed it (is_completed=True) OR a doctor has reviewed it.
+        # NOTE: review_status='Pending Review' is the DEFAULT for ALL new records
+        # (including unsubmitted drafts), so it MUST NOT be used here to decide
+        # whether a plan is submitted – only is_completed and reviewed_by_doctor are
+        # authoritative markers of a plan that should be preserved rather than reset.
+        is_submitted_or_reviewed = pref and (
+            pref.is_completed or
+            pref.review_status == "Reviewed" or
+            pref.reviewed_by_doctor is not None
+        )
+
+        if is_submitted_or_reviewed:
+            # Preserve submitted/reviewed plan – create a fresh ACPPreference record by
+            # deleting cascade-safe and reinserting a blank draft.
+            # (Existing GeneratedAMD records are preserved via their own FK.)
+            db.session.delete(pref)
+            db.session.flush()
+            new_pref = ACPPreference(patient_id=patient_id)
+            db.session.add(new_pref)
+        elif pref:
+            # Draft plan – reset all clinical fields to defaults in-place
+            pref.cpr_preference = "NOT SPECIFIED"
+            pref.ventilator_preference = "NOT SPECIFIED"
+            pref.dialysis_preference = "NOT SPECIFIED"
+            pref.chemotherapy_preference = "NOT SPECIFIED"
+            pref.radiotherapy_preference = "NOT SPECIFIED"
+            pref.surgery_preference = "NOT SPECIFIED"
+            pref.iv_fluids_preference = "NOT SPECIFIED"
+            pref.nutrition_hydration_preference = "NOT SPECIFIED"
+            pref.pain_management = None
+            pref.goals_of_care = None
+            pref.alternate_dhr_appointed = None
+            pref.preferred_place_of_care = None
+            pref.preferred_hospital = None
+            pref.preferred_physician_name = None
+            pref.preferred_physician_designation = None
+            pref.preferred_physician_institution = None
+            pref.special_focus_priority = None
+            pref.gender_identity_instructions = None
+            pref.relationship_instructions = None
+            pref.organ_donation = "NOT SPECIFIED"
+            pref.body_donation = "NOT SPECIFIED"
+            pref.last_rites = None
+            pref.forward_to_dhrs = False
+            pref.forward_to_physician = False
+            pref.forward_to_custodian = False
+            pref.additional_wishes = None
+            pref.is_completed = False
+            pref.completed_at = None
+            pref.review_status = "Pending Review"
+            pref.reviewed_by_doctor = None
+            pref.amd_generated = False
+
+        # Reset ALL questionnaire-answerable patient fields so progress shows 0%.
+        # These will be re-entered through the new questionnaire (Q1–Q10, Q6 etc.).
+        # Preserved: User.full_name (account/login name), User.email, User.password,
+        #            patient.preferred_language, patient.user_id, patient.patient_id.
+        patient.gender = None
+        patient.date_of_birth = None
+        patient.age = None
+        patient.phone = None
+        patient.address = None
+        patient.current_address = None
+        patient.permanent_address = None
+        patient.municipality_panchayat = None
+        patient.government_id_type = None
+        patient.government_id_number = None
+        patient.chronic_conditions = None
+        patient.serious_hospitalization = None
+        patient.long_term_medications = None
+        patient.allergies = None
+        patient.personal_values = None
+        patient.beliefs_values = None
+
+        # Delete all DHR records (re-entered during questionnaire)
+        DHR.query.filter_by(patient_id=patient_id).delete(synchronize_session="fetch")
+
+        # Delete all ChatHistory for this patient (fresh conversation)
+        ChatHistory.query.filter_by(patient_id=patient_id).delete(synchronize_session="fetch")
+
+        # Mark all existing AI sessions as completed so none appears active
+        AISession.query.filter_by(patient_id=patient_id).update(
+            {"is_completed": True},
+            synchronize_session="fetch"
+        )
+
+        db.session.flush()
+
+        # Create a brand-new AI microservice session at Q1
+        ai_resp = cls._request("POST", "/session", json={"language": lang, "known_answers": {}})
+        session_id = ai_resp.get("session_id")
+        if not session_id:
+            raise AIServiceException("AI service did not return a valid session ID.", status_code=502)
+
+        question_number = ai_resp.get("question_number") or 1
+
+        new_session = AISession(
+            session_id=session_id,
+            patient_id=patient_id,
+            language=lang,
+            current_question=question_number,
+            is_completed=False
+        )
+        db.session.add(new_session)
+
+        mapped_lang_name = "Kannada" if lang == "kn" else "English"
+        if patient.preferred_language != mapped_lang_name:
+            patient.preferred_language = mapped_lang_name
+
+        db.session.commit()
+
+        AuditService.log_action(
+            patient_id=patient_id,
+            action="ACP Questionnaire Restarted",
+            performed_by_id=performed_by_id,
+            remarks=f"Patient restarted ACP questionnaire. New session: {session_id}. Language: {mapped_lang_name}."
+        )
+
+        question_meta = cls.get_question_metadata(question_number, lang, patient_id=patient_id)
+        return {
+            "session_id": session_id,
+            "language": lang,
+            "question_number": question_number,
+            "question": question_meta.get("question") if question_meta else None,
+            "options": question_meta.get("options") if question_meta else None,
+            "restarted": True,
+        }
+
+    # -------------------------------------------------------------
+    # 4. Session ownership verification
     # -------------------------------------------------------------
     @classmethod
     def get_and_verify_session(cls, session_id: str, authenticated_patient_id: int = None):
@@ -275,6 +434,9 @@ class AIService:
             q_num = question_number
         else:
             q_num = ai_session.current_question or 1
+        if q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
+            q_num = 6
+            ai_session.current_question = 6
         if q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
             q_num = 6
             ai_session.current_question = 6
@@ -367,7 +529,9 @@ class AIService:
                 performed_by_id=performed_by_id,
                 session_id=session_id
             )
-            if q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
+            if q_num == 3:
+                next_num = 6
+            elif q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
                 next_num = 6
             elif q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
                 next_num = 6
@@ -456,8 +620,11 @@ class AIService:
             }
 
         # 6. Deterministic progression to next question
-        # If Q4 is answered, skip removed language question Q5 and advance directly to Q6 (unless legacy test session)
-        if q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
+        # Q4 (patient phone) is removed from the ACP questionnaire.
+        # After Q3 (gender), advance directly to Q6 (address), skipping Q4 and Q5.
+        if q_num == 3:
+            next_num = 6
+        elif q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
             next_num = 6
         elif q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
             next_num = 6
@@ -962,7 +1129,6 @@ class AIService:
             1: {"question": "What is your full legal name?", "options": None},
             2: {"question": "What is your date of birth?", "options": None},
             3: {"question": "What is your gender?", "options": ["Male", "Female", "Other"]},
-            4: {"question": "What is your mobile phone number?", "options": None},
             6: {"question": "What is your current residential address?", "options": None},
             7: {"question": "Do you have any chronic medical conditions?", "options": None},
             8: {"question": "Have you ever had a serious hospitalization or major illness?", "options": None},
@@ -1007,7 +1173,6 @@ class AIService:
             1: {"question": "ನಿಮ್ಮ ಪೂರ್ಣ ಕಾನೂನುಬದ್ಧ ಹೆಸರು ಏನು?", "options": None},
             2: {"question": "ನಿಮ್ಮ ಜನ್ಮ ದಿನಾಂಕ ಏನು?", "options": None},
             3: {"question": "ನಿಮ್ಮ ಲಿಂಗ ಯಾವುದು?", "options": ["ಪುರುಷ", "ಮಹಿಳೆ", "ಇತರೆ"]},
-            4: {"question": "ನಿಮ್ಮ ಮೊಬೈಲ್ ದೂರವಾಣಿ ಸಂಖ್ಯೆ ಏನು?", "options": None},
             6: {"question": "ನಿಮ್ಮ ಪ್ರಸ್ತುತ ವಾಸಸ್ಥಳದ ವಿಳಾಸವೇನು?", "options": None},
             7: {"question": "ನಿಮಗೆ ಯಾವುದೇ ದೀರ್ಘಕಾಲದ ವೈದ್ಯಕೀಯ ಕಾಯಿಲೆಗಳಿವೆಯೇ?", "options": None},
             8: {"question": "ನೀವು ಎಂದಾದರೂ ಗಂಭೀರ ಕಾಯಿಲೆಯಿಂದ ಆಸ್ಪತ್ರೆಗೆ ದಾಖಲಾಗಿದ್ದೀರಾ ಅಥವಾ ದೊಡ್ಡ ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಗೆ ಒಳಗಾಗಿದ್ದೀರಾ?", "options": None},
@@ -2466,22 +2631,22 @@ class AIService:
             "edit surgery": 1016,
             "edit major surgery": 1016,
             "ಶಸ್ತ್ರಚಿಕಿತ್ಸೆಯನ್ನು ತಿದ್ದು": 1016,
-            "edit cpr": 1010,
-            "cpr ತಿದ್ದು": 1010,
-            "edit ventilator": 1011,
-            "ವೆಂಟಿಲೇಟರ್ ತಿದ್ದು": 1011,
-            "edit dialysis": 1012,
-            "ಡಯಾಲಿಸಿಸ್ ತಿದ್ದು": 1012,
-            "edit artificial nutrition": 1013,
-            "ಕೃತಕ ಪೋಷಣೆ ತಿದ್ದು": 1013,
-            "edit artificial hydration": 1014,
-            "ಕೃತಕ ಜಲಸಂಚಾರ ತಿದ್ದು": 1014,
-            "edit organ donation": 1015,
-            "ಅಂಗದಾನ ತಿದ್ದು": 1015,
-            "edit body donation": 1030,
-            "ದೇಹದಾನ ತಿದ್ದು": 1030,
-            "edit last rites": 1032,
-            "ಅಂತ್ಯಕ್ರಿಯೆ ತಿದ್ದು": 1032,
+            "edit cpr": 1011,
+            "cpr ತಿದ್ದು": 1011,
+            "edit ventilator": 1012,
+            "ವೆಂಟಿಲೇಟರ್ ತಿದ್ದು": 1012,
+            "edit dialysis": 1013,
+            "ಡಯಾಲಿಸಿಸ್ ತಿದ್ದು": 1013,
+            "edit artificial nutrition": 1018,
+            "ಕೃತಕ ಪೋಷಣೆ ತಿದ್ದು": 1018,
+            "edit artificial hydration": 1017,
+            "ಕೃತಕ ಜಲಸಂಚಾರ ತಿದ್ದು": 1017,
+            "edit organ donation": 1037,
+            "ಅಂಗದಾನ ತಿದ್ದು": 1037,
+            "edit body donation": 1038,
+            "ದೇಹದಾನ ತಿದ್ದು": 1038,
+            "edit last rites": 1039,
+            "ಅಂತ್ಯಕ್ರಿಯೆ ತಿದ್ದು": 1039,
         }
         for edit_key, target_code in edit_mappings.items():
             if edit_key in lower_str:
@@ -2660,8 +2825,28 @@ class AIService:
                         "sources": None
                     }
 
-            # Validation for email edits (Q22, Q27)
-            if target_q in (22, 27):
+            # Validation for Q27 edit: primary DHR relationship is mandatory — Skip not allowed
+            if target_q == 27:
+                val_lower_edit = raw_str.strip().lower()
+                if val_lower_edit in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "none", "n/a", "ಯಾವುದೂ ಇಲ್ಲ", ""):
+                    err_msg = (
+                        "ನಿಮ್ಮ ಪ್ರಾಥಮಿಕ ಪ್ರತಿನಿಧಿಯೊಂದಿಗಿನ ಸಂಬಂಧ ಅಗತ್ಯವಾಗಿದೆ. ದಯವಿಟ್ಟು ನಿಮ್ಮ ಸಂಬಂಧವನ್ನು ನಮೂದಿಸಿ (ಉದಾ: ಪತ್ನಿ, ಮಗ, ಮಗಳು, ಸ್ನೇಹಿತ)."
+                        if lang == "kn" else
+                        "The relationship with your primary representative is required. Please describe your relationship (e.g., Spouse, Son, Daughter, Friend)."
+                    )
+                    cls._record_chat_turn(patient_id, ai_session.session_id, clean_message, err_msg)
+                    db.session.commit()
+                    return {
+                        "status": "invalid",
+                        "message": err_msg,
+                        "question_number": q_num,
+                        "answer": None,
+                        "next_question": cls.get_question_metadata(q_num, lang, patient_id=patient_id),
+                        "sources": None
+                    }
+
+            # Validation for email edits (Q29 primary DHR email, Q35 alt DHR email)
+            if target_q in (29, 35):
                 if "@" not in raw_str or "." not in raw_str:
                     err_msg = (
                         "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ (ಉದಾ: name@example.com)."
@@ -2933,8 +3118,8 @@ class AIService:
                 db.session.commit()
                 return {"status": "invalid", "message": err_msg, "question_number": q_num, "answer": None, "next_question": cls.get_question_metadata(q_num, lang, patient_id=patient_id), "sources": None}
 
-        # Validation for email questions (Q22, Q27)
-        if q_num in (22, 27):
+        # Validation for email questions (Q29 primary DHR email, Q35 alt DHR email)
+        if q_num in (29, 35):
             if raw_str.lower() not in ("skip", "none", "n/a") and ("@" not in raw_str or "." not in raw_str):
                 err_msg = (
                     "ದಯವಿಟ್ಟು ಸರಿಯಾದ ಇಮೇಲ್ ವಿಳಾಸವನ್ನು ನಮೂದಿಸಿ (ಉದಾ: name@example.com)."
@@ -3524,10 +3709,21 @@ class AIService:
             if cls._parse_date(value) or value.casefold() in {"yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"} or len(value) < 2:
                 return "Please enter your healthcare representative's full name." if lang == "en" else "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಆರೋಗ್ಯ ಪ್ರತಿನಿಧಿಯ ಪೂರ್ಣ ಹೆಸರನ್ನು ನಮೂದಿಸಿ."
 
-        # Q27: Primary DHR Relationship (new Q27) or legacy clinician designation
+        # Q27: Primary DHR Relationship — mandatory, Skip not allowed
         elif question_number == 27:
-            if len(value) >= 1:
+            if val_lower in ("skip", "ಬಿಟ್ಟುಬಿಡಿ", "none", "n/a", "ಯಾವುದೂ ಇಲ್ಲ"):
+                return (
+                    "The relationship with your primary representative is required. Please describe your relationship (e.g., Spouse, Son, Daughter, Friend)."
+                    if lang == "en" else
+                    "ಪ್ರಾಥಮಿಕ ಪ್ರತಿನಿಧಿಯೊಂದಿಗಿನ ಸಂಬಂಧವನ್ನು ನಮೂದಿಸುವುದು ಕಡ್ಡಾಯ. ದಯವಿಟ್ಟು ಸಂಬಂಧವನ್ನು ನಮೂದಿಸಿ (ಉದಾ: ಪತಿ/ಪತ್ನಿ, ಮಗ, ಮಗಳು, ಸ್ನೇಹಿತ)."
+                )
+            if len(value) >= 2:
                 return None
+            return (
+                "Please provide your relationship with this representative (e.g., Spouse, Son, Daughter, Friend)."
+                if lang == "en" else
+                "ದಯವಿಟ್ಟು ಸಂಬಂಧವನ್ನು ನಮೂದಿಸಿ (ಉದಾ: ಪತಿ/ಪತ್ನಿ, ಮಗ, ಮಗಳು, ಸ್ನೇಹಿತ)."
+            )
 
         # Q28: Primary DHR Phone (new Q28) or legacy clinician institution / patient phone
         elif question_number == 28:

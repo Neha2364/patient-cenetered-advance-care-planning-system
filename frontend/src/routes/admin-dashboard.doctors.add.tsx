@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Eye, EyeOff, Copy, CheckCheck } from "lucide-react";
-import { AdminShell } from "@/components/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,8 +69,7 @@ function AddDoctorPage() {
 
   if (createdDoctor) {
     return (
-      <AdminShell>
-        <div className="mx-auto max-w-lg space-y-6">
+      <div className="mx-auto max-w-lg space-y-6">
           <div className="rounded-2xl border border-green-200 bg-green-50 p-6 shadow-sm">
             <div className="mb-4 text-lg font-bold text-green-800">✓ Doctor Account Created</div>
             <div className="space-y-2 text-sm text-green-900">
@@ -141,13 +139,11 @@ function AddDoctorPage() {
             </Button>
           </div>
         </div>
-      </AdminShell>
     );
   }
 
   return (
-    <AdminShell>
-      <div className="mx-auto max-w-lg space-y-6">
+    <div className="mx-auto max-w-lg space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link
@@ -272,6 +268,5 @@ function AddDoctorPage() {
           </Button>
         </form>
       </div>
-    </AdminShell>
   );
 }

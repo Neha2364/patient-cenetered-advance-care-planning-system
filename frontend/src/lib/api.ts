@@ -1,4 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== "undefined" && window.location.hostname === "127.0.0.1"
+    ? "http://127.0.0.1:5000/api"
+    : "http://localhost:5000/api");
 
 export class ApiError extends Error {
   constructor(
@@ -11,7 +15,7 @@ export class ApiError extends Error {
 }
 
 export function getHeaders(): HeadersInit {
-  const token = typeof window !== "undefined" ? localStorage.getItem("acp_token") : null;
+  const token = authService.getToken();
   return {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -29,6 +33,26 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
   });
 
   if (!response.ok) {
+    // Automatically clear invalid/expired auth and redirect to login on 401
+    if (response.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/login")) {
+      authService.logout();
+      const port = window.location.port;
+      const pathname = window.location.pathname;
+      if (port === "8082" || pathname.startsWith("/admin-")) {
+        if (pathname !== "/admin-login") {
+          window.location.href = "/admin-login";
+        }
+      } else if (port === "8081" || pathname.startsWith("/doctor-")) {
+        if (pathname !== "/doctor-login") {
+          window.location.href = "/doctor-login";
+        }
+      } else {
+        if (pathname !== "/") {
+          window.location.href = "/";
+        }
+      }
+    }
+
     let errMsg = "An error occurred";
     try {
       const errData = await response.json();
@@ -142,6 +166,21 @@ export const authService = {
     });
   },
 
+  getToken(): string | null {
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("acp_token");
+      if (!token || token === "undefined" || token === "null" || token.trim() === "") {
+        return null;
+      }
+      return token.trim();
+    }
+    return null;
+  },
+
+  isAuthenticated(): boolean {
+    return Boolean(this.getToken() && this.getCurrentUser());
+  },
+
   logout() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("acp_token");
@@ -157,8 +196,16 @@ export const authService = {
     must_change_password?: boolean;
   } | null {
     if (typeof window !== "undefined") {
+      const token = this.getToken();
+      if (!token) {
+        return null;
+      }
       const user = localStorage.getItem("acp_user");
-      return user ? JSON.parse(user) : null;
+      try {
+        return user ? JSON.parse(user) : null;
+      } catch {
+        return null;
+      }
     }
     return null;
   },
@@ -339,6 +386,13 @@ export const aiService = {
       body: JSON.stringify({ session_id: sessionId }),
     });
   },
+
+  async restartSession(language: "en" | "kn" = "en"): Promise<AiSessionData> {
+    return apiFetch("/ai/session/restart", {
+      method: "POST",
+      body: JSON.stringify({ language }),
+    });
+  },
 };
 
 // Chat Service (legacy + proxy compatibility)
@@ -394,6 +448,36 @@ export const doctorService = {
   async getAnalytics(): Promise<any> {
     return apiFetch("/doctor/analytics");
   },
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return apiFetch("/doctor/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async validateResetToken(token: string): Promise<{
+    valid: boolean;
+    email?: string;
+    full_name?: string;
+    message?: string;
+  }> {
+    return apiFetch("/doctor/validate-reset-token", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  async resetPassword(payload: {
+    token: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ message: string }> {
+    return apiFetch("/doctor/reset-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 // Admin Portal Service
@@ -429,10 +513,12 @@ export const adminService = {
     userId: number,
     data: {
       full_name?: string;
+      email?: string;
       mobile_number?: string;
       specialization?: string;
       hospital?: string;
       medical_registration_number?: string;
+      is_active?: boolean;
     },
   ): Promise<any> {
     return apiFetch(`/admin/doctors/${userId}`, {
@@ -451,5 +537,85 @@ export const adminService = {
   async listPatients(search?: string): Promise<any[]> {
     const qs = search ? `?search=${encodeURIComponent(search)}` : "";
     return apiFetch(`/admin/patients${qs}`);
+  },
+
+  async getProfile(): Promise<{
+    user_id: number;
+    full_name: string;
+    email: string;
+    role: string;
+    created_at?: string;
+  }> {
+    return apiFetch("/admin/profile");
+  },
+
+  async changeEmail(payload: { new_email: string; password: string }): Promise<{
+    message: string;
+    token?: string;
+    email?: string;
+    user_id?: number;
+    full_name?: string;
+    role?: string;
+  }> {
+    const data = await apiFetch<{
+      message: string;
+      token?: string;
+      email?: string;
+      user_id?: number;
+      full_name?: string;
+      role?: string;
+    }>("/admin/change-email", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (typeof window !== "undefined") {
+      if (data.token) {
+        localStorage.setItem("acp_token", data.token);
+      }
+      const currentUser = authService.getCurrentUser();
+      if (currentUser && data.email) {
+        currentUser.email = data.email;
+        localStorage.setItem("acp_user", JSON.stringify(currentUser));
+      }
+    }
+    return data;
+  },
+
+  async changePassword(payload: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{
+    message: string;
+    token?: string;
+    user_id?: number;
+    role?: string;
+    email?: string;
+    full_name?: string;
+  }> {
+    const data = await apiFetch<{
+      message: string;
+      token?: string;
+      user_id?: number;
+      role?: string;
+      email?: string;
+      full_name?: string;
+    }>("/admin/change-password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (typeof window !== "undefined") {
+      if (data.token) {
+        localStorage.setItem("acp_token", data.token);
+      }
+      const currentUser = authService.getCurrentUser();
+      if (currentUser) {
+        currentUser.must_change_password = false;
+        localStorage.setItem("acp_user", JSON.stringify(currentUser));
+      }
+    }
+    return data;
   },
 };

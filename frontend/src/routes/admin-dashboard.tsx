@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { AdminShell } from "@/components/admin-shell";
 
 export const Route = createFileRoute("/admin-dashboard")({
@@ -12,16 +12,10 @@ export const Route = createFileRoute("/admin-dashboard")({
 });
 
 function AdminDashboardLayout() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  // For the index path, render the shell here wrapping Outlet
-  // Child routes (doctors, patients, settings) wrap themselves
-  if (pathname === "/admin-dashboard") {
-    return (
-      <AdminShell>
-        <Outlet />
-      </AdminShell>
-    );
-  }
-  return <Outlet />;
+  return (
+    <AdminShell>
+      <Outlet />
+    </AdminShell>
+  );
 }
 

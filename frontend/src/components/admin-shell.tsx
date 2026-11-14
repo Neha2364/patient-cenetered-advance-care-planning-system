@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -9,9 +9,12 @@ import {
   LogOut,
   HeartPulse,
   ShieldCheck,
+  Menu,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { authService } from "@/lib/api";
 import { RequireAuthentication } from "@/components/require-authentication";
@@ -37,11 +40,17 @@ const adminNav: NavItem[] = [
   { title: "Account Settings", url: "/admin-dashboard/settings", icon: Settings },
 ];
 
-function AdminSidebar({ user }: { user: { name: string; email: string; initial: string } }) {
+function AdminSidebarContent({
+  user,
+  onNavigate,
+}: {
+  user: { name: string; email: string; initial: string };
+  onNavigate?: () => void;
+}) {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-border bg-white lg:flex">
+    <div className="flex h-full flex-col bg-white">
       <div className="px-5 pb-4 pt-6">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-gradient text-white shadow-md">
@@ -90,6 +99,7 @@ function AdminSidebar({ user }: { user: { name: string; email: string; initial: 
             <Link
               key={item.title}
               to={item.url}
+              onClick={onNavigate}
               className={cn(
                 "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
                 active
@@ -108,14 +118,55 @@ function AdminSidebar({ user }: { user: { name: string; email: string; initial: 
         <div className="mx-1 mb-3 h-px bg-border" />
         <Link
           to="/admin-login"
-          onClick={() => authService.logout()}
+          onClick={() => {
+            onNavigate?.();
+            authService.logout();
+          }}
           className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/5 hover:text-destructive"
         >
           <LogOut className="h-4 w-4" />
           Logout
         </Link>
       </div>
+    </div>
+  );
+}
+
+function AdminSidebar({ user }: { user: { name: string; email: string; initial: string } }) {
+  return (
+    <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 border-r border-border bg-white lg:flex lg:flex-col">
+      <AdminSidebarContent user={user} />
     </aside>
+  );
+}
+
+function AdminMobileHeader({ user }: { user: { name: string; email: string; initial: string } }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+      <div className="flex items-center gap-2">
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[260px] p-0">
+            <AdminSidebarContent user={user} onNavigate={() => setOpen(false)} />
+          </SheetContent>
+        </Sheet>
+        <div className="flex items-center gap-2">
+          <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand-gradient text-white shadow-sm">
+            <HeartPulse className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-bold text-foreground">ACP Care Admin</span>
+        </div>
+      </div>
+      <Badge variant="outline" className="border-primary/30 bg-primary/5 text-[10px] font-semibold text-primary">
+        ADMIN
+      </Badge>
+    </header>
   );
 }
 
@@ -128,9 +179,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <RequireAuthentication allowedRoles={["admin"]}>
-      <div className="flex min-h-screen w-full bg-surface">
+      <div className="flex min-h-screen w-full flex-col bg-surface lg:flex-row">
+        <AdminMobileHeader user={admin} />
         <AdminSidebar user={admin} />
-        <main className="mx-auto w-full max-w-[1600px] flex-1 px-5 py-6 lg:px-8 lg:py-8">
+        <main className="min-w-0 w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {children}
         </main>
       </div>

@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Users, Stethoscope, UserCheck, UserX, ArrowRight, AlertTriangle } from "lucide-react";
-import { AdminShell } from "@/components/admin-shell";
 import { adminService } from "@/lib/api";
 
 export const Route = createFileRoute("/admin-dashboard/")({
@@ -47,8 +46,7 @@ function AdminDashboardIndex() {
   });
 
   return (
-    <AdminShell>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
@@ -134,7 +132,6 @@ function AdminDashboardIndex() {
           </Link>
         </div>
       </div>
-    </AdminShell>
   );
 }
 

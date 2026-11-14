@@ -411,6 +411,66 @@ function ChatPage() {
     },
   });
 
+  // Mutation to restart the questionnaire – resets ACP data and starts from Q1
+  const restartSessionMutation = useMutation({
+    mutationFn: (lang: "en" | "kn") => aiService.restartSession(lang),
+    onSuccess: (data) => {
+      setDraft("");
+      setValidationError(null);
+      sendLockedRef.current = false;
+      setMissingRequiredFields([]);
+      setActiveSession(data);
+      setSessionLostError(false);
+      const qNum = data.question_number ?? data.current_question ?? 1;
+      const qText =
+        data.question ||
+        (data.language === "kn" ? "ನಿಮ್ಮ ಪೂರ್ಣ ಹೆಸರು ಏನು?" : "What is your full name?");
+      const qOpts = data.options || null;
+
+      setCurrentQuestionData({
+        question_number: qNum,
+        question: qText,
+        options: qOpts,
+      });
+
+      const restartText =
+        data.language === "kn"
+          ? "ನಿಮ್ಮ ಮುಂಗಡ ಆರೈಕೆ ಯೋಜನೆ ಮರುಪ್ರಾರಂಭವಾಗಿದೆ. ನಾವು ಮೊದಲ ಪ್ರಶ್ನೆಯಿಂದ ಮತ್ತೆ ಪ್ರಾರಂಭಿಸುತ್ತೇವೆ."
+          : "Your Advance Care Planning questionnaire has been restarted. We will begin again from Question 1.";
+
+      setLocalMessages([
+        {
+          id: `restart-${Date.now()}`,
+          from: "bot",
+          text: restartText,
+        },
+        {
+          id: `start-q-${qNum}-${Date.now()}`,
+          from: "bot",
+          text: qText,
+          isQuestion: true,
+          questionNumber: qNum,
+          options: qOpts,
+        },
+      ]);
+
+      queryClient.invalidateQueries({ queryKey: ["activeAiSession", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patientAcp", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["patientProfile"] });
+      queryClient.invalidateQueries({ queryKey: ["patientDhrs", patientId] });
+      queryClient.invalidateQueries({ queryKey: ["chatHistory", patientId] });
+
+      toast.success(
+        data.language === "kn"
+          ? "ಪ್ರಶ್ನಾವಳಿ ಮರುಪ್ರಾರಂಭವಾಗಿದೆ. ಪ್ರಗತಿ 0% ಗೆ ಮರುಹೊಂದಿಸಲಾಗಿದೆ."
+          : "Questionnaire restarted. Progress reset to 0%."
+      );
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to restart session. Please try again.");
+    },
+  });
+
   // Mutation to seamlessly switch language without losing answers
   const updateLanguageMutation = useMutation({
     mutationFn: async (lang: "en" | "kn") => {
@@ -1355,7 +1415,7 @@ function ChatPage() {
 
                   {isQuestion &&
                     isLatestActiveQuestion &&
-                    [20, 22, 27, 31, 32].includes(msg.questionNumber || -1) &&
+                    [20, 22, 31, 32].includes(msg.questionNumber || -1) &&
                     !(msg.options || []).some((option: string) => ["skip", "ಬಿಟ್ಟುಬಿಡಿ"].includes(option.toLowerCase())) && (
                       <div className="mt-3 border-t border-primary/10 pt-2">
                         <Button type="button" size="sm" variant="outline" onClick={() => handleSend("Skip")} disabled={sendMessageMutation.isPending}>
@@ -1448,8 +1508,8 @@ function ChatPage() {
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm text-muted-foreground leading-relaxed">
               {selectedLanguage === "kn"
-                ? "ನೀವು ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಮೊದಲಿನಿಂದ ಮರುಪ್ರಾರಂಭಿಸಲು ಖಚಿತವಾಗಿ ಬಯಸುತ್ತೀರಾ? ನಿಮ್ಮ ಈ ಹಿಂದಿನ ಉಳಿಸಿದ ದಾಖಲೆಗಳು ಸುರಕ್ಷಿತವಾಗಿರುತ್ತವೆ, ಆದರೆ ಈ ಸಂವಾದವು ಮೊದಲ ಪ್ರಶ್ನೆಯಿಂದ ಹೊಸದಾಗಿ ಪ್ರಾರಂಭವಾಗುತ್ತದೆ."
-                : "Are you sure you want to restart your Advance Care Planning session from the beginning? Your existing saved clinical records will remain safe, but the active conversation will restart from Question 1."}
+                ? "ನೀವು ಪ್ರಶ್ನಾವಳಿಯನ್ನು ಮೊದಲಿನಿಂದ ಮರುಪ್ರಾರಂಭಿಸಲು ಖಚಿತವಾಗಿ ಬಯಸುತ್ತೀರಾ? ಈ ಕ್ರಿಯೆಯು ನಿಮ್ಮ ಎಲ್ಲಾ ಉತ್ತರಗಳನ್ನು ತೆರವುಗೊಳಿಸುತ್ತದೆ ಮತ್ತು ಪ್ರಗತಿ 0% ಗೆ ಮರಳಿಸುತ್ತದೆ. ಸಲ್ಲಿಸಲ್ಪಟ್ಟ ಅಥವಾ ಪರಿಶೀಲಿಸಲ್ಪಟ್ಟ ಯೋಜನೆಗಳು ಸಂರಕ್ಷಿತವಾಗಿರುತ್ತವೆ."
+                : "Are you sure you want to restart your Advance Care Planning questionnaire from the beginning? This will clear all your draft answers and reset your progress to 0%. Submitted or reviewed plans are preserved."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
@@ -1459,11 +1519,13 @@ function ChatPage() {
             <AlertDialogAction
               onClick={() => {
                 setShowRestartDialog(false);
-                handleStart();
+                restartSessionMutation.mutate(selectedLanguage);
               }}
               className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {selectedLanguage === "kn" ? "ಹೌದು, ಮರುಪ್ರಾರಂಭಿಸಿ" : "Yes, Restart Session"}
+              {restartSessionMutation.isPending
+                ? (selectedLanguage === "kn" ? "ಮರುಪ್ರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ…" : "Restarting…")
+                : (selectedLanguage === "kn" ? "ಹೌದು, ಮರುಪ್ರಾರಂಭಿಸಿ" : "Yes, Restart Session")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

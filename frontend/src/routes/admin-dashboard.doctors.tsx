@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   RefreshCw,
 } from "lucide-react";
-import { AdminShell } from "@/components/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -64,8 +63,7 @@ function ManageDoctorsPage() {
   const filtered = doctors ?? [];
 
   return (
-    <AdminShell>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -227,6 +225,5 @@ function ManageDoctorsPage() {
           </div>
         </div>
       </div>
-    </AdminShell>
   );
 }

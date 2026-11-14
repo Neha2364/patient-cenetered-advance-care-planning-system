@@ -46,6 +46,15 @@ class Config:
     AHCP_AI_BASE_URL = os.getenv("AHCP_AI_BASE_URL", "http://127.0.0.1:8000")
     AHCP_AI_SERVICE_API_KEY = os.getenv("AHCP_AI_SERVICE_API_KEY", "")
     AHCP_AI_TIMEOUT_SECONDS = int(os.getenv("AHCP_AI_TIMEOUT_SECONDS", 30))
+
+    # SMTP / Email Configuration for Doctor Password Reset
+    SMTP_HOST = (os.getenv("SMTP_HOST") or os.getenv("MAIL_SERVER") or "").strip()
+    SMTP_PORT = int(os.getenv("SMTP_PORT") or os.getenv("MAIL_PORT") or 587)
+    SMTP_USER = (os.getenv("SMTP_USER") or os.getenv("MAIL_USERNAME") or "").strip()
+    SMTP_PASSWORD = (os.getenv("SMTP_PASSWORD") or os.getenv("MAIL_PASSWORD") or "").strip()
+    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "True").lower() in ("true", "1", "t")
+    SMTP_FROM = (os.getenv("SMTP_FROM") or os.getenv("MAIL_DEFAULT_SENDER") or "noreply@acpcare.app").strip()
+    FRONTEND_URL = (os.getenv("FRONTEND_URL") or "http://localhost:5173").strip().rstrip('/')
     
     @classmethod
     def validate(cls):

@@ -9,7 +9,12 @@ from backend import models
 def create_app(config_class=Config):
     """Application factory for the Advance Care Planning (ACP) System backend."""
     app = Flask(__name__)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "*"}},
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
 
     # 1. Load config
     app.config.from_object(config_class)

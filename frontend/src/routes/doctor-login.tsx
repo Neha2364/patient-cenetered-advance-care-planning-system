@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -246,9 +246,17 @@ function DoctorLoginPage() {
 
               {/* Password */}
               <div className="space-y-1.5">
-                <Label htmlFor="doc-password" className="text-xs font-medium">
-                  Password
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="doc-password" className="text-xs font-medium">
+                    Password
+                  </Label>
+                  <Link
+                    to="/doctor-forgot-password"
+                    className="text-xs font-medium text-primary transition hover:underline"
+                  >
+                    Forgot Password?
+                  </Link>
+                </div>
                 <div className="relative">
                   <FieldIcon>
                     <KeyRound className="h-4 w-4" />

@@ -7,6 +7,7 @@ from backend.models.chat_history import ChatHistory
 from backend.models.generated_amd import GeneratedAMD
 from backend.models.audit_log import AuditLog
 from backend.models.ai_session import AISession
+from backend.models.password_reset_token import PasswordResetToken
 
 __all__ = [
     'User',
@@ -17,6 +18,7 @@ __all__ = [
     'ChatHistory',
     'GeneratedAMD',
     'AuditLog',
-    'AISession'
+    'AISession',
+    'PasswordResetToken'
 ]
 

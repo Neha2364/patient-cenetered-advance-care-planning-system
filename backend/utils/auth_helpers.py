@@ -1,20 +1,22 @@
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import request, jsonify, g
 from functools import wraps
 from backend.config import Config
+from backend.extensions import db
 from backend.models.user import User
 
 def generate_token(user_id, email, role, must_change_password=False):
     """Utility to generate a JWT token for testing/integration purposes."""
     try:
+        now = datetime.now(timezone.utc)
         payload = {
-            'user_id': user_id,
+            'user_id': int(user_id),
             'email': email,
             'role': role,
             'must_change_password': bool(must_change_password),
-            'exp': datetime.utcnow() + timedelta(hours=Config.JWT_EXPIRATION_HOURS),
-            'iat': datetime.utcnow()
+            'exp': now + timedelta(hours=Config.JWT_EXPIRATION_HOURS),
+            'iat': now
         }
         return jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm='HS256')
     except Exception as e:
@@ -35,14 +37,16 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        # Check Authorization header
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            try:
-                token_type, token_val = auth_header.split(" ")
-                if token_type.lower() == 'bearer':
-                    token = token_val
-            except ValueError:
+        # Check Authorization header (case-insensitive in Flask)
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            parts = auth_header.strip().split()
+            if len(parts) == 2 and parts[0].lower() == 'bearer':
+                token = parts[1]
+            elif len(parts) == 1:
+                # Tolerant fallback: raw token passed without Bearer prefix
+                token = parts[0]
+            else:
                 return jsonify({'error': 'Unauthorized', 'message': 'Authorization header must be Bearer <token>'}), 401
         
         if not token:
@@ -52,8 +56,17 @@ def token_required(f):
         if 'error' in payload:
             return jsonify({'error': 'Unauthorized', 'message': payload['error']}), 401
 
-        # Check if user exists in the database
-        user = User.query.get(payload['user_id'])
+        user_id = payload.get('user_id')
+        if user_id is None:
+            return jsonify({'error': 'Unauthorized', 'message': 'Invalid token payload.'}), 401
+
+        # Check if user exists in the database (SQLAlchemy 2.0 compatible)
+        try:
+            uid = int(user_id)
+            user = db.session.get(User, uid) if hasattr(db.session, 'get') else User.query.get(uid)
+        except (ValueError, TypeError):
+            user = None
+
         if not user:
             return jsonify({'error': 'Unauthorized', 'message': 'Authenticated user no longer exists.'}), 401
 

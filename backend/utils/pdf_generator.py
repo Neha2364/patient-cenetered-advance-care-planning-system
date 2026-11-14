@@ -322,10 +322,8 @@ def generate_amd_pdf(patient, preferences, dhrs, witnesses, notary_name, notary_
     # PAGE 1: TITLE & SECTION 1: PERSONAL DETAILS
     # -------------------------------------------------------------------------
     story.append(Paragraph("ADVANCE MEDICAL DIRECTIVE", title_style))
-    story.append(Paragraph("Living Will & Healthcare Power of Attorney · Executed pursuant to Order dated 24/01/2023 of the Hon'ble Supreme Court of India in MA No. 1699/2019 in WP(C) No. 215/2005", subtitle_style))
 
     story.append(Paragraph("Section 1: Personal details", h1_style))
-    story.append(Paragraph("This advance medical directive (living will) and the designation of healthcare representative(s) is made by me:", body_style))
     story.append(Spacer(1, 3))
 
     col_widths_s1 = [140.0, 347.27]

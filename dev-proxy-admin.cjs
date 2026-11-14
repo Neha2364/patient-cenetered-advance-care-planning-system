@@ -15,6 +15,8 @@ const http = require("http");
 
 const UPSTREAM_HOST = "127.0.0.1";
 const UPSTREAM_PORT = 8080;
+const FLASK_HOST = "127.0.0.1";
+const FLASK_PORT = 5000;
 const PROXY_PORT = 8082;
 
 const server = http.createServer((req, res) => {
@@ -22,58 +24,62 @@ const server = http.createServer((req, res) => {
   const [pathname, search] = reqUrl.split("?");
   const query = search ? `?${search}` : "";
 
-    // Never forward admin portal root or index to the patient homepage.
-    // Redirect bare root, empty path, or /index.html directly to /admin-login.
-    if (pathname === "/" || pathname === "" || pathname === "/index.html") {
-      res.writeHead(302, {
-        Location: "/admin-login" + query,
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      });
-      res.end();
-      return;
+  // Never forward admin portal root or index to the patient homepage.
+  // Redirect bare root, empty path, or /index.html directly to /admin-login.
+  if (pathname === "/" || pathname === "" || pathname === "/index.html") {
+    res.writeHead(302, {
+      Location: "/admin-login" + query,
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+    });
+    res.end();
+    return;
+  }
+
+  // Forward /api requests to Flask backend; everything else to Vite dev server
+  const isApi = pathname === "/api" || pathname.startsWith("/api/");
+  const targetHost = isApi ? FLASK_HOST : UPSTREAM_HOST;
+  const targetPort = isApi ? FLASK_PORT : UPSTREAM_PORT;
+
+  const options = {
+    hostname: targetHost,
+    port: targetPort,
+    path: reqUrl,
+    method: req.method,
+    headers: {
+      ...req.headers,
+      host: `${targetHost}:${targetPort}`,
+      "x-forwarded-host": req.headers.host || `localhost:${PROXY_PORT}`,
+      "x-forwarded-port": String(PROXY_PORT),
+      "x-forwarded-proto": "http",
+    },
+  };
+
+  const proxy = http.request(options, (upstreamRes) => {
+    const headers = { ...upstreamRes.headers };
+
+    // Rewrite Location header on redirects so the user stays on port 8082
+    if (headers.location) {
+      if (headers.location === "/" || headers.location === "") {
+        headers.location = "/admin-login";
+      } else {
+        headers.location = headers.location
+          .replace(new RegExp(`http://${UPSTREAM_HOST}:${UPSTREAM_PORT}`, "g"), `http://localhost:${PROXY_PORT}`)
+          .replace(new RegExp(`http://localhost:${UPSTREAM_PORT}`, "g"), `http://localhost:${PROXY_PORT}`);
+      }
     }
 
-    // Forward everything else to upstream app
-    const options = {
-      hostname: UPSTREAM_HOST,
-      port: UPSTREAM_PORT,
-      path: reqUrl,
-      method: req.method,
-      headers: {
-        ...req.headers,
-        host: `${UPSTREAM_HOST}:${UPSTREAM_PORT}`,
-        "x-forwarded-host": req.headers.host || `localhost:${PROXY_PORT}`,
-        "x-forwarded-port": String(PROXY_PORT),
-        "x-forwarded-proto": "http",
-      },
-    };
-
-    const proxy = http.request(options, (upstreamRes) => {
-      const headers = { ...upstreamRes.headers };
-
-      // Rewrite Location header on redirects so the user stays on port 8082
-      if (headers.location) {
-        if (headers.location === "/" || headers.location === "") {
-          headers.location = "/admin-login";
-        } else {
-          headers.location = headers.location
-            .replace(new RegExp(`http://${UPSTREAM_HOST}:${UPSTREAM_PORT}`, "g"), `http://localhost:${PROXY_PORT}`)
-            .replace(new RegExp(`http://localhost:${UPSTREAM_PORT}`, "g"), `http://localhost:${PROXY_PORT}`);
-        }
-      }
-
-      res.writeHead(upstreamRes.statusCode || 200, headers);
-      upstreamRes.pipe(res, { end: true });
-    });
-
-    proxy.on("error", (err) => {
-      console.error("[admin-proxy] upstream error:", err.message);
-      res.writeHead(502, { "Content-Type": "text/plain" });
-      res.end("Bad Gateway - is the main app running on port 8080?\n");
-    });
-
-    req.pipe(proxy, { end: true });
+    res.writeHead(upstreamRes.statusCode || 200, headers);
+    upstreamRes.pipe(res, { end: true });
   });
+
+  proxy.on("error", (err) => {
+    console.error(`[admin-proxy] ${isApi ? "Flask API (port 5000)" : "upstream (port 8080)"} error:`, err.message);
+    res.writeHead(502, { "Content-Type": "text/plain" });
+    res.end(isApi ? "Bad Gateway - is Flask running on port 5000?\n" : "Bad Gateway - is the main app running on port 8080?\n");
+  });
+
+  req.pipe(proxy, { end: true });
+});
 
 // Support Vite HMR WebSocket upgrade proxying
 server.on("upgrade", (req, socket, head) => {

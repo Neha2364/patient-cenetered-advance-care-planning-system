@@ -272,3 +272,40 @@ def check_ai_health():
     status_code = 200 if result.get("backend_connected") else 503
     return jsonify(result), status_code
 
+
+@token_required
+@role_required(['patient'])
+def restart_ai_session():
+    """
+    Restart the ACP questionnaire from scratch (POST /api/ai/session/restart).
+
+    - Resets all draft ACP clinical fields to defaults.
+    - Deletes all DHR records for fresh entry.
+    - Deletes all ChatHistory records for the patient.
+    - Marks existing AI sessions as completed.
+    - Creates a new AI microservice session at Question 1.
+    - Returns the new session data identical to create_ai_session.
+    """
+    try:
+        patient = g.current_user.patient_profile
+        if not patient:
+            return jsonify({"error": "Forbidden", "message": "No patient profile associated with this account."}), 403
+
+        json_data = request.get_json(silent=True) or {}
+        language = json_data.get("language")
+        if not language:
+            if patient.preferred_language and "kannada" in patient.preferred_language.lower():
+                language = "kn"
+            else:
+                language = "en"
+
+        result = AIService.restart_session(
+            patient_id=patient.patient_id,
+            language=language,
+            performed_by_id=g.current_user.id
+        )
+        return jsonify(result), 200
+
+    except Exception as e:
+        return _handle_ai_exception(e)
+

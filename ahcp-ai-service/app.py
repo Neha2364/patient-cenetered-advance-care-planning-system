@@ -1,6 +1,6 @@
 """AHCP AI Service extracted from ACP.ipynb and adapted for standalone use."""
 from __future__ import annotations
-import os, secrets, logging, json
+import os, secrets, logging, json, re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path

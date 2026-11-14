@@ -27,7 +27,14 @@ from backend.controllers.dashboard_controller import (
     doctor_get_patient_amd_history, doctor_review_patient_acp,
     doctor_get_analytics
 )
-from backend.controllers.auth_controller import register, login, change_password
+from backend.controllers.auth_controller import (
+    register,
+    login,
+    change_password,
+    doctor_forgot_password,
+    doctor_validate_reset_token,
+    doctor_reset_password,
+)
 from backend.controllers.ai_controller import (
     create_ai_session,
     chat_ai,
@@ -36,7 +43,8 @@ from backend.controllers.ai_controller import (
     get_active_patient_session,
     update_ai_session_language,
     confirm_ai_review,
-    check_ai_health
+    check_ai_health,
+    restart_ai_session,
 )
 from backend.controllers.admin_controller import (
     admin_get_dashboard,
@@ -46,6 +54,9 @@ from backend.controllers.admin_controller import (
     admin_update_doctor,
     admin_set_doctor_status,
     admin_list_patients,
+    admin_get_profile,
+    admin_change_email,
+    admin_change_password,
 )
 
 # Auth APIs
@@ -53,6 +64,9 @@ api_bp.add_url_rule('/auth/register', view_func=register, methods=['POST'])
 api_bp.add_url_rule('/auth/login', view_func=login, methods=['POST'])
 api_bp.add_url_rule('/auth/change-password', view_func=change_password, methods=['POST'])
 api_bp.add_url_rule('/doctor/change-password', view_func=change_password, methods=['POST'])
+api_bp.add_url_rule('/doctor/forgot-password', view_func=doctor_forgot_password, methods=['POST'])
+api_bp.add_url_rule('/doctor/validate-reset-token', view_func=doctor_validate_reset_token, methods=['POST'])
+api_bp.add_url_rule('/doctor/reset-password', view_func=doctor_reset_password, methods=['POST'])
 
 # Patient APIs
 api_bp.add_url_rule('/patients', view_func=create_patient, methods=['POST'])
@@ -77,6 +91,7 @@ api_bp.add_url_rule('/chat/history/<int:patient_id>', view_func=get_chat_history
 # AI Microservice Proxy APIs (organized under /ai and aliased to root contract)
 api_bp.add_url_rule('/ai/session', view_func=create_ai_session, methods=['POST'])
 api_bp.add_url_rule('/session', view_func=create_ai_session, methods=['POST'])
+api_bp.add_url_rule('/ai/session/restart', view_func=restart_ai_session, methods=['POST'])
 
 api_bp.add_url_rule('/ai/chat', view_func=chat_ai, methods=['POST'])
 api_bp.add_url_rule('/chat', view_func=chat_ai, methods=['POST'])
@@ -116,4 +131,7 @@ api_bp.add_url_rule('/admin/doctors/<int:user_id>', view_func=admin_get_doctor, 
 api_bp.add_url_rule('/admin/doctors/<int:user_id>', view_func=admin_update_doctor, methods=['PUT'])
 api_bp.add_url_rule('/admin/doctors/<int:user_id>/status', view_func=admin_set_doctor_status, methods=['PATCH'])
 api_bp.add_url_rule('/admin/patients', view_func=admin_list_patients, methods=['GET'])
+api_bp.add_url_rule('/admin/profile', view_func=admin_get_profile, methods=['GET'])
+api_bp.add_url_rule('/admin/change-email', view_func=admin_change_email, methods=['POST'])
+api_bp.add_url_rule('/admin/change-password', view_func=admin_change_password, methods=['POST'])
 
