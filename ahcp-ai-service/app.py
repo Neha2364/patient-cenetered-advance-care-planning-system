@@ -238,7 +238,18 @@ ANSWER_NORMALIZATION = {
     "ಹೌದು": "Yes",
     "i want this treatment": "Yes",
     "want": "Yes",
+    "i want": "Yes",
+    "i want it": "Yes",
+    "i want this": "Yes",
+    "yes please": "Yes",
+    "definitely yes": "Yes",
+    "i need it": "Yes",
+    "need it": "Yes",
     "ಬಯಸುತ್ತೇನೆ": "Yes",
+    "ಬೇಕು": "Yes",
+    "ನನಗೆ ಬೇಕು": "Yes",
+    "ನನಗೆ ಇದು ಬೇಕು": "Yes",
+    "ಖಂಡಿತ ಹೌದು": "Yes",
 
     "no": "No",
     "n": "No",
@@ -246,15 +257,29 @@ ANSWER_NORMALIZATION = {
     "i do not want this treatment": "No",
     "do not want": "No",
     "don't want": "No",
+    "i do not want": "No",
+    "i don't want": "No",
+    "not needed": "No",
+    "don't need": "No",
+    "do not need": "No",
+    "no thanks": "No",
     "ಬೇಡ": "No",
     "ಬಯಸುವುದಿಲ್ಲ": "No",
+    "ನನಗೆ ಬೇಡ": "No",
+    "ನನಗೆ ಇದು ಬೇಡ": "No",
+    "ಬೇಡವೇ ಬೇಡ": "No",
+    "ಖಂಡಿತ ಇಲ್ಲ": "No",
 
     "unsure": "Unsure",
     "not sure": "Unsure",
     "undecided": "Unsure",
     "unsure / undecided": "Unsure",
+    "don't know": "Unsure",
+    "do not know": "Unsure",
     "ಖಚಿತವಿಲ್ಲ": "Unsure",
     "ತೀರ್ಮಾನಿಸಿಲ್ಲ": "Unsure",
+    "ಗೊತ್ತಿಲ್ಲ": "Unsure",
+    "ತಿಳಿದಿಲ್ಲ": "Unsure",
 
     # --- Goals of care Q19 ---
     "comfort-focused care": "Comfort-focused care",
@@ -591,7 +616,7 @@ def save_questionnaire_answer(session_id, answer):
                 break
 
         if matched_option is None:
-            norm = normalize_answer(answer)
+            norm = normalize_answer(answer, question_number)
             if norm:
                 for option in valid_options:
                     if norm.strip().lower() == option.strip().lower():
@@ -856,25 +881,119 @@ def get_question_text(session_id, question_number):
 
     return LANGUAGE_TEXT[language].get(question_number)
 
-def normalize_answer(user_message):
+def normalize_answer(user_message, question_number=None):
     """
     Convert English/Kannada patient responses into
-    canonical internal values.
+    canonical internal values, supporting natural language phrases.
     """
     if user_message is None:
         return None
 
-    text = user_message.strip()
+    clean = user_message.strip()
+    if not clean:
+        return None
+
+    # Strip common trailing/leading punctuation
+    stripped = re.sub(r"^[^\w\u0C80-\u0CFF]+|[^\w\u0C80-\u0CFF]+$", "", clean)
+    if not stripped:
+        stripped = clean
 
     # Direct lookup
-    if text in ANSWER_NORMALIZATION:
-        return ANSWER_NORMALIZATION[text]
+    if stripped in ANSWER_NORMALIZATION:
+        return ANSWER_NORMALIZATION[stripped]
 
     # Case-insensitive English lookup
-    lower_text = text.lower()
+    clean_lower = stripped.lower()
+    if clean_lower in ANSWER_NORMALIZATION:
+        return ANSWER_NORMALIZATION[clean_lower]
 
-    if lower_text in ANSWER_NORMALIZATION:
-        return ANSWER_NORMALIZATION[lower_text]
+    t = clean_lower
+
+    # Questions where Yes/No/Unsure are expected (Q11-Q18 treatments, Q31 alt DHR, Q37 organ, Q38 body)
+    is_yn_question = (question_number is not None and (11 <= question_number <= 18 or question_number in (31, 37, 38)))
+
+    # 1. Gender (Q3)
+    if question_number == 3:
+        if any(w in t for w in ("male", "man", "boy", "ಪುರುಷ", "ಗಂಡು")) and not any(w in t for w in ("female", "woman", "ಮಹಿಳೆ")):
+            return "Male"
+        if any(w in t for w in ("female", "woman", "girl", "ಮಹಿಳೆ", "ಹೆಣ್ಣು")):
+            return "Female"
+        if any(w in t for w in ("other", "non-binary", "transgender", "ಇತರೆ", "ಬೇರೆ")):
+            return "Other"
+
+    # 2. Goals of care (Q19)
+    if question_number == 19:
+        if any(w in t for w in ("balance", "both", "ಸಮತೋಲನ")):
+            return "A balance of comfort and life-prolonging treatment"
+        if any(w in t for w in ("comfort", "pain relief", "ease", "ಆರಾಮ", "ನೆಮ್ಮದಿ")):
+            return "Comfort-focused care"
+        if any(w in t for w in ("prolong", "extend", "life-prolonging", "life prolonging", "ಜೀವನ", "ದೀರ್ಘ")):
+            return "Life-prolonging treatment"
+        if any(w in t for w in ("unsure", "not sure", "undecided", "don't know", "ಖಚಿತವಿಲ್ಲ")):
+            return "Unsure"
+
+    # 3. Preferred place of care (Q20)
+    if question_number == 20:
+        if any(w in t for w in ("no pref", "no preference", "any preference", "anywhere", "either", "no specific preference", "ಯಾವುದೇ ಆದ್ಯತೆ ಇಲ್ಲ", "ಯಾವುದೇ ಆದ್ಯತೆಯಿಲ್ಲ")) or ("preference" in t and ("don't" in t or "dont" in t or "no" in t)):
+            return "No preference"
+        if any(w in t for w in ("home", "house", "residence", "ಮನೆ", "ಮನೆಯಲ್ಲಿ")):
+            return "Home"
+        if any(w in t for w in ("hospital", "clinic", "icu", "ward", "ಆಸ್ಪತ್ರೆ", "ಆಸ್ಪತ್ರೆಯಲ್ಲಿ")):
+            return "Hospital"
+        if any(w in t for w in ("hospice", "palliative", "ಹಾಸ್ಪಿಸ್", "ಪ್ಯಾಲಿಯೇಟಿವ್")):
+            return "Hospice"
+        if any(w in t for w in ("unsure", "not sure", "undecided", "don't know", "ಖಚಿತವಿಲ್ಲ")):
+            return "Unsure"
+
+    # 4. Level of medical intervention (Q24)
+    if question_number == 24:
+        if any(w in t for w in ("full", "maximum", "all treatment", "complete", "ಪೂರ್ಣ", "ಸಂಪೂರ್ಣ")):
+            return "Full treatment"
+        if any(w in t for w in ("limited", "selective", "intermediate", "ಸೀಮಿತ")):
+            return "Limited intervention"
+        if any(w in t for w in ("comfort", "palliative", "pain only", "ಆರಾಮ", "ಆರಾಮದಾಯಕ")):
+            return "Comfort-focused care"
+        if any(w in t for w in ("unsure", "not sure", "undecided", "don't know", "ಖಚಿತವಿಲ್ಲ")):
+            return "Unsure"
+
+    # 5. Address copy (Q30, Q36, Q40)
+    if question_number in (30, 36, 40):
+        if any(w in t for w in ("same as my address", "same as mine", "same address", "my address", "current address", "same as current", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ", "ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ")):
+            return "Same as my address" if question_number in (30, 36) else "Same as current address"
+
+    # 6. Semantic matching for Yes/No/Unsure
+    short_direct_yn = len(t.split()) <= 4 or t.startswith(("yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"))
+    allow_yn_matching = is_yn_question or (question_number is None) or (question_number not in (1, 2, 4, 6, 7, 8, 9, 10, 21, 22, 23, 25, 26, 27, 28, 29, 32, 33, 34, 35, 39, 41, 42, 43) and short_direct_yn)
+
+    if allow_yn_matching:
+        unsure_patterns = (
+            r"\b(?:unsure|not sure|undecided|don't know|do not know|cannot decide|can't decide|need more time)\b",
+            r"(?:ಖಚಿತವಿಲ್ಲ|ಗೊತ್ತಿಲ್ಲ|ತಿಳಿದಿಲ್ಲ|ತೀರ್ಮಾನಿಸಿಲ್ಲ)"
+        )
+        if any(re.search(pat, t) for pat in unsure_patterns):
+            return "Unsure"
+
+        negative_patterns = (
+            r"^(?:no|n|nope|nah)\b",
+            r"\b(?:don't|dont|do not|did not|would not|wouldn't|never)\s+(?:want|need|wish|accept|opt|require)\b",
+            r"\b(?:not needed|not required|don't need|dont need|do not need|don't want|dont want|do not want|decline|refuse|withhold|withdraw|no thanks)\b",
+            r"(?:ಇಲ್ಲ|ಬೇಡ|ಬಯಸುವುದಿಲ್ಲ|ಅಗತ್ಯವಿಲ್ಲ|ಬೇಡವೇ ಬೇಡ)"
+        )
+        if any(re.search(pat, t) for pat in negative_patterns):
+            return "No"
+
+        affirmative_patterns = (
+            r"^(?:yes|y|yeah|yep|sure|want)\b",
+            r"\b(?:i want|i need|want it|need it|would want|would like|definitely yes|yes please|i agree|agree|accept|provide)\b",
+            r"(?:ಹೌದು|ಬೇಕು|ಬಯಸುತ್ತೇನೆ|ಸಮ್ಮತಿಸುತ್ತೇನೆ|ಖಂಡಿತ ಹೌದು|ನೀಡಿ|ಒಪ್ಪುತ್ತೇನೆ)"
+        )
+        if any(re.search(pat, t) for pat in affirmative_patterns):
+            return "Yes"
+
+    # 7. Review confirm
+    if question_number == 44 or "confirm" in t or "ದೃಢೀಕರಿಸಿ" in t:
+        if any(w in t for w in ("confirm", "complete", "ದೃಢೀಕರಿಸಿ", "ಖಚಿತಪಡಿಸಿ")):
+            return "Confirm & Complete ACP"
 
     return None
 

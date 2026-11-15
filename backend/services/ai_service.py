@@ -1,5 +1,6 @@
 import logging
 import time
+import re
 from datetime import datetime
 import requests
 from flask import current_app
@@ -429,6 +430,9 @@ class AIService:
         if not clean_message:
             raise AIServiceException("Message cannot be empty.", status_code=400)
 
+        # Store the patient's actual typed or selected message for UI display & chat history
+        raw_user_message = clean_message
+
         # Determine authoritative active question ID
         if question_number is not None and 1 <= question_number <= 46:
             q_num = question_number
@@ -441,15 +445,15 @@ class AIService:
             q_num = 6
             ai_session.current_question = 6
 
-        # Normalize Kannada/English option labels to canonical English
-        clean_message = cls.normalize_answer_to_canonical(clean_message, q_num)
+        # Normalize Kannada/English option labels and natural language answers to canonical English
+        canonical_answer = cls.normalize_answer_to_canonical(clean_message, q_num)
 
         # Route edit commands (>= 1000, 44, 46, 36, or explicit edit text) or already completed post-review sessions
-        is_edit_command = any(k in clean_message.lower() for k in ["edit ", "ಬದಲಾಯಿಸ", "ನವೀಕರಿಸ", "ತಿದ್ದು"])
-        is_review_confirm = any(k in clean_message.lower() for k in ["confirm", "complete", "ದೃಢೀಕರಿಸಿ", "ಹೌದು"])
+        is_edit_command = any(k in canonical_answer.lower() for k in ["edit ", "ಬದಲಾಯಿಸ", "ನವೀಕರಿಸ", "ತಿದ್ದು"])
+        is_review_confirm = any(k in canonical_answer.lower() for k in ["confirm", "complete", "ದೃಢೀಕರಿಸಿ", "ಹೌದು"])
         if ai_session.is_completed or (ai_session.current_question and ai_session.current_question >= 1000) or (ai_session.current_question in (44, 46)) or (ai_session.current_question == 36 and (is_edit_command or is_review_confirm or ai_session.session_id.startswith("test-"))) or is_edit_command:
             q_num_before = ai_session.current_question or 44
-            res = cls._process_follow_up_chat(ai_session, clean_message, patient_id, performed_by_id)
+            res = cls._process_follow_up_chat(ai_session, canonical_answer, patient_id, performed_by_id)
             if isinstance(res, dict) and "answered_question" not in res:
                 answered_q_num = res.get("question_number") or q_num_before
                 res["answered_question"] = cls.get_question_metadata(answered_q_num, ai_session.language, patient_id=patient_id)
@@ -457,13 +461,13 @@ class AIService:
             ai_session.current_question = 6
 
         # 2. Validate answer locally against current question
-        validation_message = cls._validate_conversation_answer(q_num, clean_message, ai_session.language)
+        validation_message = cls._validate_conversation_answer(q_num, canonical_answer, ai_session.language)
         if validation_message:
             question = cls.get_question_metadata(q_num, ai_session.language, patient_id=patient_id)
             cls._record_chat_turn(
                 patient_id=patient_id,
                 session_id=session_id,
-                user_message=clean_message,
+                user_message=raw_user_message,
                 bot_response=validation_message,
                 question_number=q_num,
             )
@@ -484,7 +488,7 @@ class AIService:
         try:
             ai_resp = cls._request("POST", "/chat", json={
                 "session_id": session_id,
-                "message": clean_message,
+                "message": canonical_answer,
                 "question_number": q_num
             })
         except (AIServiceTimeoutException, AIServiceUnavailableException, AIServiceConfigException):
@@ -499,7 +503,7 @@ class AIService:
             cls._record_chat_turn(
                 patient_id=patient_id,
                 session_id=session_id,
-                user_message=clean_message,
+                user_message=raw_user_message,
                 bot_response=inv_msg,
                 question_number=q_num,
             )
@@ -516,7 +520,7 @@ class AIService:
             }
 
         # Check if AI service returned explanation or user requested explanation for treatment question
-        is_unsure_msg = clean_message.strip().lower() in ("unsure", "not sure", "ಖಚಿತವಿಲ್ಲ", "i am unsure", "i'm unsure")
+        is_unsure_msg = canonical_answer.strip().lower() in ("unsure", "not sure", "ಖಚಿತವಿಲ್ಲ", "i am unsure", "i'm unsure")
         is_explanation = (ai_resp and isinstance(ai_resp, dict) and ai_resp.get("status") == "explanation") or (
             is_unsure_msg and (q_num in cls.TREATMENT_EXPLANATIONS or (11 <= q_num <= 18) or q_num in (19, 20, 24))
         )
@@ -525,7 +529,7 @@ class AIService:
             cls._persist_canonical_answer(
                 patient_id=patient_id,
                 question_number=q_num,
-                answer=clean_message,
+                answer=canonical_answer,
                 performed_by_id=performed_by_id,
                 session_id=session_id
             )
@@ -550,7 +554,7 @@ class AIService:
             cls._record_chat_turn(
                 patient_id=patient_id,
                 session_id=session_id,
-                user_message=clean_message,
+                user_message=raw_user_message,
                 bot_response=exp_msg,
                 question_number=q_num,
             )
@@ -559,7 +563,7 @@ class AIService:
                 "status": "explanation",
                 "message": exp_msg,
                 "question_number": q_num,
-                "answer": clean_message,
+                "answer": raw_user_message,
                 "answered_question": cls.get_question_metadata(q_num, ai_session.language, patient_id=patient_id),
                 "next_question": cls.get_question_metadata(next_num, ai_session.language, patient_id=patient_id),
                 "sources": ai_resp.get("sources") if (ai_resp and isinstance(ai_resp, dict)) else None
@@ -569,7 +573,7 @@ class AIService:
         cls._persist_canonical_answer(
             patient_id=patient_id,
             question_number=q_num,
-            answer=clean_message,
+            answer=canonical_answer,
             performed_by_id=performed_by_id,
             session_id=session_id
         )
@@ -585,7 +589,7 @@ class AIService:
                 "status": "saved",
                 "message": "Answer recorded.",
                 "question_number": q_num,
-                "answer": clean_message,
+                "answer": raw_user_message,
                 "answered_question": cls.get_question_metadata(q_num, ai_session.language, patient_id=patient_id),
                 "next_question": next_q,
                 "sources": None
@@ -603,7 +607,7 @@ class AIService:
             cls._record_chat_turn(
                 patient_id=patient_id,
                 session_id=session_id,
-                user_message=clean_message,
+                user_message=raw_user_message,
                 bot_response=complete_msg,
                 question_number=q_num,
             )
@@ -612,7 +616,7 @@ class AIService:
                 "status": "completed",
                 "message": complete_msg,
                 "question_number": q_num,
-                "answer": clean_message,
+                "answer": raw_user_message,
                 "answered_question": cls.get_question_metadata(q_num, ai_session.language, patient_id=patient_id),
                 "next_question": cls._get_review_step_data(patient_id, ai_session.language, question_number=44),
                 "redirect_section": "review",
@@ -628,7 +632,7 @@ class AIService:
             next_num = 6
         elif q_num == 5 and session_id not in cls.LEGACY_SESSIONS:
             next_num = 6
-        elif q_num == 31 and clean_message.strip().lower() in ("no", "ಇಲ್ಲ", "do not want", "ಬೇಡ"):
+        elif q_num == 31 and canonical_answer.strip().lower() in ("no", "ಇಲ್ಲ", "do not want", "ಬೇಡ"):
             next_num = 37
         elif q_num == 36:
             next_num = 37
@@ -644,7 +648,7 @@ class AIService:
         cls._record_chat_turn(
             patient_id=patient_id,
             session_id=session_id,
-            user_message=clean_message,
+            user_message=raw_user_message,
             bot_response=save_msg,
             question_number=q_num,
         )
@@ -653,7 +657,7 @@ class AIService:
             "status": "saved",
             "message": save_msg,
             "question_number": q_num,
-            "answer": clean_message,
+            "answer": raw_user_message,
             "answered_question": cls.get_question_metadata(q_num, ai_session.language, patient_id=patient_id),
             "next_question": next_q,
             "sources": None
@@ -686,9 +690,9 @@ class AIService:
         "kannada": "Kannada", "kn": "Kannada", "ಕನ್ನಡ": "Kannada",
 
         # Yes / No / Unsure (Q11-Q18, Q31, Q37, Q38)
-        "yes": "Yes", "y": "Yes", "ಹೌದು": "Yes", "want": "Yes", "i want this treatment": "Yes", "ಬಯಸುತ್ತೇನೆ": "Yes",
-        "no": "No", "n": "No", "ಇಲ್ಲ": "No", "do not want": "No", "don't want": "No", "i do not want this treatment": "No", "ಬೇಡ": "No", "ಬಯಸುವುದಿಲ್ಲ": "No",
-        "unsure": "Unsure", "not sure": "Unsure", "undecided": "Unsure", "unsure / undecided": "Unsure", "ಖಚಿತವಿಲ್ಲ": "Unsure", "ತೀರ್ಮಾನಿಸಿಲ್ಲ": "Unsure",
+        "yes": "Yes", "y": "Yes", "ಹೌದು": "Yes", "want": "Yes", "i want": "Yes", "i want it": "Yes", "i want this": "Yes", "i want this treatment": "Yes", "yes please": "Yes", "definitely yes": "Yes", "i need it": "Yes", "need it": "Yes", "ಬಯಸುತ್ತೇನೆ": "Yes", "ಬೇಕು": "Yes", "ನನಗೆ ಬೇಕು": "Yes", "ನನಗೆ ಇದು ಬೇಕು": "Yes",
+        "no": "No", "n": "No", "ಇಲ್ಲ": "No", "do not want": "No", "don't want": "No", "i do not want": "No", "i don't want": "No", "i do not want this treatment": "No", "not needed": "No", "don't need": "No", "do not need": "No", "no thanks": "No", "ಬೇಡ": "No", "ಬಯಸುವುದಿಲ್ಲ": "No", "ನನಗೆ ಬೇಡ": "No", "ನನಗೆ ಇದು ಬೇಡ": "No", "ಬೇಡವೇ ಬೇಡ": "No",
+        "unsure": "Unsure", "not sure": "Unsure", "undecided": "Unsure", "unsure / undecided": "Unsure", "don't know": "Unsure", "do not know": "Unsure", "ಖಚಿತವಿಲ್ಲ": "Unsure", "ತೀರ್ಮಾನಿಸಿಲ್ಲ": "Unsure", "ಗೊತ್ತಿಲ್ಲ": "Unsure", "ತಿಳಿದಿಲ್ಲ": "Unsure",
 
         # Goals of care Q19
         "comfort-focused care": "Comfort-focused care",
@@ -792,21 +796,116 @@ class AIService:
     @classmethod
     def normalize_answer_to_canonical(cls, answer: str, question_number: int = None) -> str:
         """Convert English or Kannada patient responses into canonical internal values.
-        Trims whitespace, handles case-insensitivity, and maps known options to canonical values."""
+        Supports exact options, button clicks, and natural language typed phrases.
+        Maintains genuine invalid/unrecognized inputs as unmapped text for validation rejection."""
         if not answer:
             return ""
         clean = str(answer).strip()
         if not clean:
             return ""
 
+        # Strip common trailing/leading punctuation
+        stripped = re.sub(r"^[^\w\u0C80-\u0CFF]+|[^\w\u0C80-\u0CFF]+$", "", clean)
+        if not stripped:
+            stripped = clean
+
         # Direct lookup (covers Kannada unicode and exact case)
-        if clean in cls.MULTILINGUAL_CANONICAL:
-            return cls.MULTILINGUAL_CANONICAL[clean]
+        if stripped in cls.MULTILINGUAL_CANONICAL:
+            return cls.MULTILINGUAL_CANONICAL[stripped]
 
         # Case-insensitive English lookup
-        clean_lower = clean.lower()
+        clean_lower = stripped.lower()
         if clean_lower in cls.MULTILINGUAL_CANONICAL:
             return cls.MULTILINGUAL_CANONICAL[clean_lower]
+
+        t = clean_lower
+
+        # Questions where Yes/No/Unsure are expected (Q11-Q18 treatments, Q31 alt DHR, Q37 organ, Q38 body)
+        is_yn_question = (question_number is not None and (11 <= question_number <= 18 or question_number in (31, 37, 38)))
+
+        # 1. Gender (Q3)
+        if question_number == 3:
+            if any(w in t for w in ("male", "man", "boy", "ಪುರುಷ", "ಗಂಡು")) and not any(w in t for w in ("female", "woman", "ಮಹಿಳೆ")):
+                return "Male"
+            if any(w in t for w in ("female", "woman", "girl", "ಮಹಿಳೆ", "ಹೆಣ್ಣು")):
+                return "Female"
+            if any(w in t for w in ("other", "non-binary", "transgender", "ಇತರೆ", "ಬೇರೆ")):
+                return "Other"
+
+        # 2. Goals of care (Q19)
+        if question_number == 19:
+            if any(w in t for w in ("balance", "both", "ಸಮತೋಲನ")):
+                return "A balance of comfort and life-prolonging treatment"
+            if any(w in t for w in ("comfort", "pain relief", "ease", "ಆರಾಮ", "ನೆಮ್ಮದಿ")):
+                return "Comfort-focused care"
+            if any(w in t for w in ("prolong", "extend", "life-prolonging", "life prolonging", "ಜೀವನ", "ದೀರ್ಘ")):
+                return "Life-prolonging treatment"
+            if any(w in t for w in ("unsure", "not sure", "undecided", "don't know", "ಖಚಿತವಿಲ್ಲ")):
+                return "Unsure"
+
+        # 3. Preferred place of care (Q20)
+        if question_number == 20:
+            if any(w in t for w in ("no pref", "no preference", "any preference", "anywhere", "either", "no specific preference", "ಯಾವುದೇ ಆದ್ಯತೆ ಇಲ್ಲ", "ಯಾವುದೇ ಆದ್ಯತೆಯಿಲ್ಲ")) or ("preference" in t and ("don't" in t or "dont" in t or "no" in t)):
+                return "No preference"
+            if any(w in t for w in ("home", "house", "residence", "ಮನೆ", "ಮನೆಯಲ್ಲಿ")):
+                return "Home"
+            if any(w in t for w in ("hospital", "clinic", "icu", "ward", "ಆಸ್ಪತ್ರೆ", "ಆಸ್ಪತ್ರೆಯಲ್ಲಿ")):
+                return "Hospital"
+            if any(w in t for w in ("hospice", "palliative", "ಹಾಸ್ಪಿಸ್", "ಪ್ಯಾಲಿಯೇಟಿವ್")):
+                return "Hospice"
+            if any(w in t for w in ("unsure", "not sure", "undecided", "don't know", "ಖಚಿತವಿಲ್ಲ")):
+                return "Unsure"
+
+        # 4. Level of medical intervention (Q24)
+        if question_number == 24:
+            if any(w in t for w in ("full", "maximum", "all treatment", "complete", "ಪೂರ್ಣ", "ಸಂಪೂರ್ಣ")):
+                return "Full medical treatment"
+            if any(w in t for w in ("limited", "selective", "intermediate", "ಸೀಮಿತ")):
+                return "Limited medical treatment"
+            if any(w in t for w in ("comfort", "palliative", "pain only", "ಆರಾಮ", "ಆರಾಮದಾಯಕ")):
+                return "Comfort-focused treatment"
+            if any(w in t for w in ("unsure", "not sure", "undecided", "don't know", "ಖಚಿತವಿಲ್ಲ")):
+                return "Unsure"
+
+        # 5. Address copy (Q30, Q36, Q40)
+        if question_number in (30, 36, 40):
+            if any(w in t for w in ("same as my address", "same as mine", "same address", "my address", "current address", "same as current", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ", "ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ")):
+                return "Same as my address" if question_number in (30, 36) else "Same as current address"
+
+        # 6. Semantic matching for Yes/No/Unsure
+        # Avoid greedy affirmative matches for open text questions (e.g. Q23 values, Q25 wishes, Q27 relationship, Q39 last rites)
+        short_direct_yn = len(t.split()) <= 4 or t.startswith(("yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ"))
+        allow_yn_matching = is_yn_question or (question_number is None) or (question_number not in (1, 2, 4, 6, 7, 8, 9, 10, 21, 22, 23, 25, 26, 27, 28, 29, 32, 33, 34, 35, 39, 41, 42, 43) and short_direct_yn)
+
+        if allow_yn_matching:
+            unsure_patterns = (
+                r"\b(?:unsure|not sure|undecided|don't know|do not know|cannot decide|can't decide|need more time)\b",
+                r"(?:ಖಚಿತವಿಲ್ಲ|ಗೊತ್ತಿಲ್ಲ|ತಿಳಿದಿಲ್ಲ|ತೀರ್ಮಾನಿಸಿಲ್ಲ)"
+            )
+            if any(re.search(pat, t) for pat in unsure_patterns):
+                return "Unsure"
+
+            negative_patterns = (
+                r"^(?:no|n|nope|nah)\b",
+                r"\b(?:don't|dont|do not|did not|would not|wouldn't|never)\s+(?:want|need|wish|accept|opt|require)\b",
+                r"\b(?:not needed|not required|don't need|dont need|do not need|don't want|dont want|do not want|decline|refuse|withhold|withdraw|no thanks)\b",
+                r"(?:ಇಲ್ಲ|ಬೇಡ|ಬಯಸುವುದಿಲ್ಲ|ಅಗತ್ಯವಿಲ್ಲ|ಬೇಡವೇ ಬೇಡ)"
+            )
+            if any(re.search(pat, t) for pat in negative_patterns):
+                return "No"
+
+            affirmative_patterns = (
+                r"^(?:yes|y|yeah|yep|sure|want)\b",
+                r"\b(?:i want|i need|want it|need it|would want|would like|definitely yes|yes please|i agree|agree|accept|provide)\b",
+                r"(?:ಹೌದು|ಬೇಕು|ಬಯಸುತ್ತೇನೆ|ಸಮ್ಮತಿಸುತ್ತೇನೆ|ಖಂಡಿತ ಹೌದು|ನೀಡಿ|ಒಪ್ಪುತ್ತೇನೆ)"
+            )
+            if any(re.search(pat, t) for pat in affirmative_patterns):
+                return "Yes"
+
+        # 7. Review confirm
+        if question_number == 44 or "confirm" in t or "ದೃಢೀಕರಿಸಿ" in t:
+            if any(w in t for w in ("confirm", "complete", "ದೃಢೀಕರಿಸಿ", "ಖಚಿತಪಡಿಸಿ")):
+                return "Confirm & Complete ACP"
 
         return clean
 
@@ -3601,6 +3700,7 @@ class AIService:
         if not value:
             return "Please enter an answer to this question." if lang == "en" else "ದಯವಿಟ್ಟು ಈ ಪ್ರಶ್ನೆಗೆ ಉತ್ತರಿಸಿ."
 
+        canonical_val = cls.normalize_answer_to_canonical(value, question_number)
         val_lower = value.lower()
         is_confirm = "confirm" in val_lower or "ದೃಢೀಕರಿಸಿ" in val_lower or "keep" in val_lower or "ಇರಿಸಿ" in val_lower
         is_skip = val_lower in ("skip", "none", "n/a", "ಬಿಟ್ಟುಬಿಡಿ", "ಯಾವುದೂ ಇಲ್ಲ", "ಯಾವುದೇ ಆದ್ಯತೆ ಇಲ್ಲ", "ಯಾವುದೇ ನಿರ್ದಿಷ್ಟ ಆಶಯವಿಲ್ಲ", "no preference", "no specific wishes", "no additional wishes", "same as current address", "same as my address", "ಪ್ರಸ್ತುತ ವಿಳಾಸದಂತೆಯೇ", "ನನ್ನ ವಿಳಾಸದಂತೆಯೇ")
@@ -3625,7 +3725,7 @@ class AIService:
             if is_confirm:
                 return None
             allowed = {"male", "female", "other", "ಪುರುಷ", "ಮಹಿಳೆ", "ಇತರೆ", "m", "f"}
-            if value.casefold() not in allowed:
+            if canonical_val.casefold() not in allowed and value.casefold() not in allowed:
                 return "Choose Male, Female, or Other." if lang == "en" else "ಪುರುಷ, ಮಹಿಳೆ ಅಥವಾ ಇತರೆ ಆಯ್ಕೆಮಾಡಿ."
 
         # Q4: Phone (new Q4) or legacy DHR name
@@ -3667,10 +3767,7 @@ class AIService:
         # Q11..Q18: Life-sustaining treatment directives (new Q11..Q18) or legacy choices
         elif 11 <= question_number <= 18:
             allowed = {"yes", "no", "unsure", "ಹೌದು", "ಇಲ್ಲ", "ಖಚಿತವಿಲ್ಲ", "want", "do not want", "undecided", "i want this treatment", "i do not want this treatment", "unsure / undecided"}
-            if value.casefold() in allowed or any(k in value.lower() for k in ("want", "organ", "donation")):
-                return None
-            # Allow legacy answers for Q11-Q18 in test suites
-            if question_number in (11, 12, 13, 14) and len(value) >= 1:
+            if canonical_val.casefold() in allowed or value.casefold() in allowed or any(k in value.lower() for k in ("want", "organ", "donation")):
                 return None
             if question_number == 16 and any(k in value.lower() for k in ("comfort", "life-prolonging", "balance", "care")):
                 return None
@@ -3753,7 +3850,7 @@ class AIService:
         # Q31: Alternate DHR prompt (Yes / No) (new Q31) or legacy wishes
         elif question_number == 31:
             allowed = {"yes", "no", "ಹೌದು", "ಇಲ್ಲ"}
-            if value.casefold() not in allowed and len(value) < 3:
+            if canonical_val.casefold() not in allowed and value.casefold() not in allowed and len(value) < 3:
                 return "Choose Yes or No." if lang == "en" else "ಹೌದು ಅಥವಾ ಇಲ್ಲ ಆಯ್ಕೆಮಾಡಿ."
 
         # Q32..Q36: Alternate DHR details (new Q32..Q36) or legacy primary DHR
@@ -3785,7 +3882,7 @@ class AIService:
         # Q37..Q38: Organ & Body Donation (new Q37..Q38) - Yes / No only (Unsure removed)
         elif question_number in (37, 38):
             allowed = {"yes", "no", "ಹೌದು", "ಇಲ್ಲ"}
-            if value.casefold() not in allowed:
+            if canonical_val.casefold() not in allowed and value.casefold() not in allowed:
                 return "Please choose Yes or No." if lang == "en" else "ದಯವಿಟ್ಟು ಹೌದು ಅಥವಾ ಇಲ್ಲ ಆಯ್ಕೆಮಾಡಿ."
 
         # Q39: Last Rites Wishes (new Q39) or legacy alternate relationship
