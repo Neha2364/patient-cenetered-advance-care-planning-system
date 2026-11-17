@@ -5,7 +5,7 @@
       "root": "frontend/"
     },
     "backend": {
-      "root": "./",
+      "root": "backend-service/",
       "entrypoint": "api.index:app"
     }
   },

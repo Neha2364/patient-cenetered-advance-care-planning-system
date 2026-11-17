@@ -1,0 +1,729 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Patient-Centered Advance Care Planning (ACP) System API",
+    "description": "Production-ready backend API documentation for creating Advance Medical Directives (LIVING WILL) via AI conversational tools, managing Designated Healthcare Representatives (DHR), and providing Dashboards for Doctors and Admins.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000/api",
+      "description": "Local Development Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter the JWT token provided during authentication. Format: Bearer <token>"
+      }
+    },
+    "schemas": {
+      "UserRegister": {
+        "type": "object",
+        "required": ["email", "password", "full_name", "role"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 6 },
+          "full_name": { "type": "string" },
+          "role": { "type": "string", "enum": ["patient", "doctor", "admin"] }
+        }
+      },
+      "UserLogin": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "UserResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "email": { "type": "string" },
+          "full_name": { "type": "string" },
+          "role": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string" },
+          "user_id": { "type": "integer" },
+          "full_name": { "type": "string" },
+          "role": { "type": "string" }
+        }
+      },
+      "Patient": {
+        "type": "object",
+        "required": ["user_id", "phone"],
+        "properties": {
+          "patient_id": { "type": "integer", "readOnly": true },
+          "user_id": { "type": "integer" },
+          "age": { "type": "integer", "nullable": true },
+          "gender": { "type": "string", "nullable": true },
+          "date_of_birth": { "type": "string", "format": "date", "nullable": true },
+          "phone": { "type": "string" },
+          "address": { "type": "string", "nullable": true },
+          "preferred_language": { "type": "string", "enum": ["English", "Kannada"], "default": "English" },
+          "government_id_type": { "type": "string", "enum": ["Aadhaar", "Passport", "Driving License", "Voter ID"], "nullable": true },
+          "government_id_number": { "type": "string", "nullable": true },
+          "permanent_address": { "type": "string", "nullable": true },
+          "current_address": { "type": "string", "nullable": true },
+          "municipality_panchayat": { "type": "string", "nullable": true },
+          "beliefs_values": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+          "updated_at": { "type": "string", "format": "date-time", "readOnly": true }
+        }
+      },
+      "ACPPreference": {
+        "type": "object",
+        "required": ["patient_id"],
+        "properties": {
+          "patient_id": { "type": "integer" },
+          "cpr_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "ventilator_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "dialysis_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "chemotherapy_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "radiotherapy_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "surgery_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "iv_fluids_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "nutrition_hydration_preference": { "type": "string", "enum": ["WANT", "DO NOT WANT", "NOT SPECIFIED"], "default": "NOT SPECIFIED" },
+          "pain_management": { "type": "string", "nullable": true },
+          "preferred_place_of_care": { "type": "string", "nullable": true },
+          "preferred_hospital": { "type": "string", "nullable": true },
+          "preferred_physician_name": { "type": "string", "nullable": true },
+          "preferred_physician_designation": { "type": "string", "nullable": true },
+          "preferred_physician_institution": { "type": "string", "nullable": true },
+          "special_focus_priority": { "type": "string", "nullable": true },
+          "gender_identity_instructions": { "type": "string", "nullable": true },
+          "relationship_instructions": { "type": "string", "nullable": true },
+          "organ_donation": { "type": "string", "default": "NOT SPECIFIED" },
+          "body_donation": { "type": "string", "default": "NOT SPECIFIED" },
+          "last_rites": { "type": "string", "nullable": true },
+          "forward_to_dhrs": { "type": "boolean", "default": false },
+          "forward_to_physician": { "type": "boolean", "default": false },
+          "forward_to_custodian": { "type": "boolean", "default": false },
+          "additional_wishes": { "type": "string", "nullable": true },
+          "is_completed": { "type": "boolean", "default": false },
+          "completed_at": { "type": "string", "format": "date-time", "nullable": true },
+          "review_status": { "type": "string", "enum": ["Pending Review", "Reviewed", "Rejected"], "default": "Pending Review" },
+          "reviewed_by_doctor": { "type": "integer", "nullable": true },
+          "amd_generated": { "type": "boolean", "default": false }
+        }
+      },
+      "DHR": {
+        "type": "object",
+        "required": ["patient_id", "full_name", "relationship", "email_primary", "mobile_primary"],
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "patient_id": { "type": "integer" },
+          "full_name": { "type": "string" },
+          "relationship": { "type": "string" },
+          "date_of_birth": { "type": "string", "format": "date", "nullable": true },
+          "government_id_type": { "type": "string", "enum": ["Aadhaar", "Passport", "Driving License", "Voter ID"], "nullable": true },
+          "government_id_number": { "type": "string", "nullable": true },
+          "mobile_primary": { "type": "string" },
+          "mobile_secondary": { "type": "string", "nullable": true },
+          "email_primary": { "type": "string" },
+          "email_secondary": { "type": "string", "nullable": true },
+          "permanent_address": { "type": "string", "nullable": true },
+          "signing_address": { "type": "string", "nullable": true },
+          "preference_order": { "type": "integer", "default": 1 }
+        }
+      },
+      "ChatProcessInput": {
+        "type": "object",
+        "required": ["patient_id"],
+        "properties": {
+          "patient_id": { "type": "integer" },
+          "cpr": { "type": "string", "nullable": true },
+          "ventilator": { "type": "string", "nullable": true },
+          "dialysis": { "type": "string", "nullable": true },
+          "chemotherapy": { "type": "string", "nullable": true },
+          "radiotherapy": { "type": "string", "nullable": true },
+          "surgery": { "type": "string", "nullable": true },
+          "iv_fluids": { "type": "string", "nullable": true },
+          "nutrition_hydration": { "type": "string", "nullable": true },
+          "pain_management": { "type": "string", "nullable": true },
+          "preferred_place": { "type": "string", "nullable": true },
+          "preferred_hospital": { "type": "string", "nullable": true },
+          "additional_wishes": { "type": "string", "nullable": true },
+          "conversation_id": { "type": "string", "nullable": true },
+          "session_id": { "type": "string", "nullable": true },
+          "user_message": { "type": "string", "nullable": true },
+          "bot_response": { "type": "string", "nullable": true }
+        }
+      },
+      "AMDGenerateInput": {
+        "type": "object",
+        "required": ["patient_id", "witnesses"],
+        "properties": {
+          "patient_id": { "type": "integer" },
+          "executor_place": { "type": "string", "default": "Not Specified" },
+          "notary_name": { "type": "string", "default": "Not Specified" },
+          "notary_place": { "type": "string", "default": "Not Specified" },
+          "create_new_version": { "type": "boolean", "default": false },
+          "witnesses": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["name", "email", "mobile"],
+              "properties": {
+                "name": { "type": "string" },
+                "email": { "type": "string", "format": "email" },
+                "mobile": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "GeneratedAMD": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "patient_id": { "type": "integer" },
+          "pdf_name": { "type": "string" },
+          "pdf_url": { "type": "string" },
+          "storage_bucket": { "type": "string" },
+          "storage_path": { "type": "string" },
+          "version": { "type": "integer" },
+          "status": { "type": "string" },
+          "generated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuditLog": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "patient_id": { "type": "integer", "nullable": true },
+          "action": { "type": "string" },
+          "performed_by": { "type": "integer" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "remarks": { "type": "string", "nullable": true }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "description": "Creates a new user account with role-based access. Does not require authentication.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegister"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or duplicate email"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Authenticate user",
+        "description": "Verifies user credentials and generates a JWT token for subsequent authenticated API requests.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLogin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid email or password"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/patients": {
+      "post": {
+        "summary": "Create patient profile",
+        "description": "Registers clinical details for a user as a patient. Patients can only register for themselves.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Patient"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Patient created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Patient"
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation or duplicate profile error" }
+        }
+      },
+      "get": {
+        "summary": "List all patients",
+        "description": "Retrieve registered patients. Restricted to Doctors and Administrators.",
+        "responses": {
+          "200": {
+            "description": "List of patients",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Patient"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/patients/{id}": {
+      "get": {
+        "summary": "Retrieve specific patient details",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Patient" } }
+            }
+          },
+          "404": { "description": "Patient not found" }
+        }
+      },
+      "put": {
+        "summary": "Update patient details",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Patient" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Patient" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete patient profile",
+        "description": "Permanently remove patient clinical file. Restricted to Administrators.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Profile deleted successfully" }
+        }
+      }
+    },
+    "/acp": {
+      "post": {
+        "summary": "Create/Update ACP preferences",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ACPPreference" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ACPPreference" } }
+            }
+          }
+        }
+      }
+    },
+    "/acp/{patient_id}": {
+      "get": {
+        "summary": "Get patient preferences",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ACPPreference" } }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update patient preferences",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ACPPreference" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ACPPreference" } }
+            }
+          }
+        }
+      }
+    },
+    "/dhr": {
+      "post": {
+        "summary": "Appoint new Designated Healthcare Representative",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/DHR" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/DHR" } }
+            }
+          }
+        }
+      }
+    },
+    "/dhr/{patient_id}": {
+      "get": {
+        "summary": "Retrieve patient's appointed DHRs",
+        "description": "Lists DHR appointments sorted in order of preference.",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/DHR" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dhr/{id}": {
+      "put": {
+        "summary": "Update DHR details",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/DHR" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/DHR" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove DHR appointment",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "DHR deleted successfully" }
+        }
+      }
+    },
+    "/chat/process": {
+      "post": {
+        "summary": "AI module preference webhook",
+        "description": "Saves structured ACP details parsed from chat logs and writes a conversational history entry.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ChatProcessInput" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Chat preferences parsed and saved successfully" }
+        }
+      }
+    },
+    "/audit-logs": {
+      "get": {
+        "summary": "System-wide audit logs",
+        "description": "Admin restricted access to global log history.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLog" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit-logs/patient/{patient_id}": {
+      "get": {
+        "summary": "Fetch patient specific audit logs",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLog" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/amd/generate": {
+      "post": {
+        "summary": "Generate Advance Medical Directive PDF",
+        "description": "Compiles preferences and DHRs into a ReportLab PDF, uploads it to Supabase Storage, and commits SQL metadata.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AMDGenerateInput" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "AMD successfully generated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GeneratedAMD" } }
+            }
+          }
+        }
+      }
+    },
+    "/amd/download/{patient_id}": {
+      "get": {
+        "summary": "Download latest AMD document",
+        "description": "Returns redirect to the PDF file in Supabase Storage or returns JSON metadata if JSON accept-headers are set.",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirecting to Supabase public file URL" },
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GeneratedAMD" } }
+            }
+          }
+        }
+      }
+    },
+    "/doctor/patients": {
+      "get": {
+        "summary": "Doctor workspace patient list",
+        "description": "Lists patient files with full text search (name/email/phone) and status filters.",
+        "parameters": [
+          { "name": "search", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "language", "in": "query", "required": false, "schema": { "type": "string", "enum": ["English", "Kannada"] } },
+          { "name": "is_completed", "in": "query", "required": false, "schema": { "type": "boolean" } },
+          { "name": "review_status", "in": "query", "required": false, "schema": { "type": "string", "enum": ["Pending Review", "Reviewed", "Rejected"] } },
+          { "name": "amd_generated", "in": "query", "required": false, "schema": { "type": "boolean" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "patient_id": { "type": "integer" },
+                      "full_name": { "type": "string" },
+                      "email": { "type": "string" },
+                      "phone": { "type": "string" },
+                      "preferred_language": { "type": "string" },
+                      "is_completed": { "type": "boolean" },
+                      "review_status": { "type": "string" },
+                      "amd_generated": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/doctor/patient/{id}": {
+      "get": {
+        "summary": "Doctor detailed patient view",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "patient": { "$ref": "#/components/schemas/Patient" },
+                    "acp_preferences": { "$ref": "#/components/schemas/ACPPreference" },
+                    "dhrs": { "type": "array", "items": { "$ref": "#/components/schemas/DHR" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/doctor/amd/{patient_id}": {
+      "get": {
+        "summary": "Doctor patient AMD history",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/GeneratedAMD" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/doctor/review/{patient_id}": {
+      "put": {
+        "summary": "Doctor update review status",
+        "parameters": [
+          { "name": "patient_id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["review_status"],
+                "properties": {
+                  "review_status": { "type": "string", "enum": ["Pending Review", "Reviewed", "Rejected"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Review status updated successfully" }
+        }
+      }
+    },
+    "/admin/dashboard": {
+      "get": {
+        "summary": "Admin dashboard analytics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_patients": { "type": "integer" },
+                    "total_acp_preferences": { "type": "integer" },
+                    "total_dhrs": { "type": "integer" },
+                    "total_amd_documents": { "type": "integer" },
+                    "preferred_languages": { "type": "object" },
+                    "acp_completed_count": { "type": "integer" },
+                    "acp_completion_rate_percentage": { "type": "number" },
+                    "generated_amd_statistics": { "type": "object" },
+                    "recent_activities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer" },
+                          "patient_id": { "type": "integer" },
+                          "action": { "type": "string" },
+                          "performed_by": { "type": "string" },
+                          "timestamp": { "type": "string", "format": "date-time" },
+                          "remarks": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

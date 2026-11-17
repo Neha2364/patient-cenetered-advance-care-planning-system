@@ -2,15 +2,19 @@ import os
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
-# Explicitly load env variables from backend/.env or root .env
+# Explicitly load env variables from backend/.env, service .env, or root .env
 _basedir = os.path.abspath(os.path.dirname(__file__))
-_backend_env = os.path.join(_basedir, '.env')
-_root_env = os.path.join(os.path.dirname(_basedir), '.env')
+_candidate_envs = [
+    os.path.join(_basedir, '.env'),
+    os.path.join(os.path.dirname(_basedir), '.env'),
+    os.path.join(os.path.dirname(os.path.dirname(_basedir)), 'backend', '.env'),
+    os.path.join(os.path.dirname(os.path.dirname(_basedir)), '.env'),
+]
 
-if os.path.exists(_backend_env):
-    load_dotenv(_backend_env, override=True)
-elif os.path.exists(_root_env):
-    load_dotenv(_root_env, override=True)
+for _env_path in _candidate_envs:
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path, override=True)
+        break
 else:
     load_dotenv(override=True)
 

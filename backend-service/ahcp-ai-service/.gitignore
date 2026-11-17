@@ -1,0 +1,10 @@
+.env
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+knowledge/*.faiss
+knowledge/*.index
+knowledge/.cache/
+.cache/

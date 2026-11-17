@@ -86,6 +86,8 @@ class AIService:
             import sys
             from pathlib import Path
             ai_dir = Path(__file__).resolve().parent.parent.parent / "ahcp-ai-service"
+            if not ai_dir.exists():
+                ai_dir = Path(__file__).resolve().parent.parent / "ahcp-ai-service"
             if str(ai_dir) not in sys.path and ai_dir.exists():
                 sys.path.insert(0, str(ai_dir))
             from fastapi.testclient import TestClient

@@ -1,0 +1,1 @@
+Source: uploaded Copy of ACP.ipynb (260 cells). Original notebook was not bundled to avoid duplicate size and embedded outputs. Core latest definitions extracted by AST from notebook cells.
