@@ -1,3 +1,4 @@
+import os
 import logging
 import time
 import re
@@ -70,31 +71,71 @@ class AIService:
         }
 
     @classmethod
+    def _is_inprocess_mode(cls):
+        base_url = (Config.AHCP_AI_BASE_URL or "").strip().lower()
+        return (
+            os.getenv("VERCEL") is not None
+            or os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+            or base_url in ("inprocess", "internal", "local", "embedded", "")
+            or not base_url.startswith("http")
+        )
+
+    @classmethod
+    def _get_inprocess_client(cls):
+        if not hasattr(cls, "_inprocess_client_instance") or cls._inprocess_client_instance is None:
+            import sys
+            from pathlib import Path
+            ai_dir = Path(__file__).resolve().parent.parent.parent / "ahcp-ai-service"
+            if str(ai_dir) not in sys.path and ai_dir.exists():
+                sys.path.insert(0, str(ai_dir))
+            from fastapi.testclient import TestClient
+            import app as ai_app_module
+            cls._inprocess_client_instance = TestClient(ai_app_module.app, raise_server_exceptions=False)
+        return cls._inprocess_client_instance
+
+    @classmethod
     def _request(cls, method, path, **kwargs):
-        base_url = Config.AHCP_AI_BASE_URL.rstrip('/')
-        url = f"{base_url}{path}"
         timeout = kwargs.pop("timeout", Config.AHCP_AI_TIMEOUT_SECONDS)
         headers = kwargs.pop("headers", None)
         if headers is None and path != "/health":
             headers = cls._get_headers()
 
-        start_time = time.time()
-        try:
-            response = requests.request(method, url, timeout=timeout, headers=headers, **kwargs)
-            duration = time.time() - start_time
-            logger.info(f"AI service {method} {path} finished with HTTP {response.status_code} in {duration:.2f}s")
-        except requests.exceptions.Timeout:
-            duration = time.time() - start_time
-            logger.warning(f"Timeout calling AI service at {path} after {duration:.2f}s")
-            raise AIServiceTimeoutException("AI service timed out while processing the request.")
-        except requests.exceptions.ConnectionError:
-            duration = time.time() - start_time
-            logger.warning(f"Connection error calling AI service at {path} after {duration:.2f}s")
-            raise AIServiceUnavailableException("Unable to connect to the AHCP AI service. Please verify that the microservice is running.")
-        except requests.exceptions.RequestException as e:
-            duration = time.time() - start_time
-            logger.error(f"Unexpected network error calling AI service after {duration:.2f}s: {e}")
-            raise AIServiceUnavailableException(f"Communication error with the AI service: {str(e)}")
+        # In-process execution mode (serverless or explicit inprocess configuration)
+        if cls._is_inprocess_mode():
+            client = cls._get_inprocess_client()
+            start_time = time.time()
+            try:
+                response = client.request(method, path, headers=headers, **kwargs)
+                duration = time.time() - start_time
+                logger.info(f"In-process AI service {method} {path} finished with HTTP {response.status_code} in {duration:.2f}s")
+            except Exception as e:
+                duration = time.time() - start_time
+                logger.error(f"In-process AI service error at {path} after {duration:.2f}s: {e}")
+                raise AIServiceUnavailableException(f"In-process AI service error: {str(e)}")
+        else:
+            base_url = Config.AHCP_AI_BASE_URL.rstrip('/')
+            url = f"{base_url}{path}"
+            start_time = time.time()
+            try:
+                response = requests.request(method, url, timeout=timeout, headers=headers, **kwargs)
+                duration = time.time() - start_time
+                logger.info(f"AI service {method} {path} finished with HTTP {response.status_code} in {duration:.2f}s")
+            except requests.exceptions.Timeout:
+                duration = time.time() - start_time
+                logger.warning(f"Timeout calling AI service at {path} after {duration:.2f}s")
+                raise AIServiceTimeoutException("AI service timed out while processing the request.")
+            except requests.exceptions.ConnectionError:
+                duration = time.time() - start_time
+                logger.warning(f"Connection error calling AI service at {path} after {duration:.2f}s")
+                raise AIServiceUnavailableException("Unable to connect to the AHCP AI service. Please verify that the microservice is running.")
+            except requests.exceptions.RequestException as e:
+                duration = time.time() - start_time
+                logger.error(f"Unexpected network error calling AI service after {duration:.2f}s: {e}")
+                raise AIServiceUnavailableException(f"Communication error with the AI service: {str(e)}")
+
+        is_ok = getattr(response, "ok", None)
+        if is_ok is None:
+            is_ok = 200 <= response.status_code < 400
 
         if response.status_code == 401:
             logger.error("AI service returned 401 Unauthorized with provided API key.")
@@ -104,7 +145,7 @@ class AIService:
         elif response.status_code >= 500:
             logger.error(f"AI service returned server error {response.status_code}: {response.text}")
             raise AIServiceUnavailableException("The AI service encountered an internal error. Please try again later.")
-        elif not response.ok:
+        elif not is_ok:
             try:
                 err_data = response.json()
                 msg = err_data.get("detail") or err_data.get("message") or "AI service request failed."
@@ -417,6 +458,48 @@ class AIService:
         """Retrieve the most recent session for a patient, if any."""
         return AISession.query.filter_by(patient_id=patient_id).order_by(AISession.created_at.desc()).first()
 
+    @classmethod
+    def ensure_session_hydrated(cls, ai_session: AISession):
+        """Reconstruct AI session memory in serverless environments using Supabase PostgreSQL data."""
+        if not ai_session:
+            return
+        try:
+            # Build known answers from DB
+            synthesized = cls._synthesize_record_from_db(ai_session.patient_id)
+            known_answers = {}
+            if synthesized:
+                pinfo = synthesized.get("patient_information") or {}
+                med = synthesized.get("medical_background") or {}
+                treat = synthesized.get("treatment_preferences") or {}
+                known_answers.update({k: v for k, v in pinfo.items() if v not in (None, "")})
+                known_answers.update({k: v for k, v in med.items() if v not in (None, "")})
+                known_answers.update({k: v for k, v in treat.items() if v not in (None, "")})
+
+            # Fetch recent chat messages for context
+            recent_turns = ChatHistory.query.filter_by(
+                patient_id=ai_session.patient_id
+            ).order_by(ChatHistory.created_at.desc()).limit(10).all()
+            messages = []
+            for t in reversed(recent_turns):
+                if t.user_message:
+                    messages.append({"role": "user", "content": t.user_message})
+                if t.bot_response:
+                    messages.append({"role": "assistant", "content": t.bot_response})
+
+            cls._request(
+                "POST",
+                "/session/hydrate",
+                json={
+                    "session_id": ai_session.session_id,
+                    "language": ai_session.language or "en",
+                    "current_question": ai_session.current_question or 1,
+                    "patient_record": known_answers,
+                    "messages": messages
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Could not hydrate session {ai_session.session_id}: {e}")
+
     # -------------------------------------------------------------
     # 4. Chat processing and answer persistence
     # -------------------------------------------------------------
@@ -491,6 +574,15 @@ class AIService:
                 "message": canonical_answer,
                 "question_number": q_num
             })
+        except AISessionNotFoundException:
+            # Rehydrate from PostgreSQL and retry once (essential for serverless cold start recovery)
+            logger.info(f"AI service lost session {session_id} from memory. Rehydrating from database...")
+            cls.ensure_session_hydrated(ai_session)
+            ai_resp = cls._request("POST", "/chat", json={
+                "session_id": session_id,
+                "message": canonical_answer,
+                "question_number": q_num
+            })
         except (AIServiceTimeoutException, AIServiceUnavailableException, AIServiceConfigException):
             raise
         except Exception as e:
@@ -533,7 +625,7 @@ class AIService:
                 performed_by_id=performed_by_id,
                 session_id=session_id
             )
-            if q_num == 3:
+            if q_num == 3 and session_id not in cls.LEGACY_SESSIONS:
                 next_num = 6
             elif q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
                 next_num = 6
@@ -626,7 +718,7 @@ class AIService:
         # 6. Deterministic progression to next question
         # Q4 (patient phone) is removed from the ACP questionnaire.
         # After Q3 (gender), advance directly to Q6 (address), skipping Q4 and Q5.
-        if q_num == 3:
+        if q_num == 3 and session_id not in cls.LEGACY_SESSIONS:
             next_num = 6
         elif q_num == 4 and session_id not in cls.LEGACY_SESSIONS:
             next_num = 6
@@ -3013,7 +3105,12 @@ class AIService:
                 return cls.confirm_review(patient_id, performed_by_id, ai_session=ai_session)
 
             # Educational/RAG query after plan completion
-            ai_resp = cls._request("POST", "/chat", json={"session_id": ai_session.session_id, "message": clean_message})
+            try:
+                ai_resp = cls._request("POST", "/chat", json={"session_id": ai_session.session_id, "message": clean_message})
+            except AISessionNotFoundException:
+                logger.info(f"AI service lost session {ai_session.session_id} from memory. Rehydrating from database...")
+                cls.ensure_session_hydrated(ai_session)
+                ai_resp = cls._request("POST", "/chat", json={"session_id": ai_session.session_id, "message": clean_message})
             bot_msg = cls._sanitize_educational_response(ai_resp.get("message") or "")
             sources = ai_resp.get("sources")
             if sources and isinstance(sources, list):

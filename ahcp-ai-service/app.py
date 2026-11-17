@@ -1,6 +1,7 @@
 """AHCP AI Service extracted from ACP.ipynb and adapted for standalone use."""
 from __future__ import annotations
-import os, secrets, logging, json, re
+import os, secrets, logging, json, re, math
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +43,7 @@ conversation_store: dict[str, dict[str, Any]] = {}
 chunks: list[dict[str, Any]] = []
 chunk_texts: list[str] = []
 embedding_model = None
+bm25_index = None
 faiss_index = None
 knowledge_load_error = None
 
@@ -422,6 +424,27 @@ def create_session(known_answers: dict[str, Any] | None = None):
     }
 
     return session_id
+
+
+def create_session_with_id(
+    session_id: str,
+    language: str = "en",
+    current_question: int | None = 1,
+    known_answers: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Ensure a session container exists for the given session_id (e.g. for serverless cold start reconstruction)."""
+    if session_id not in conversation_store:
+        lang = (language or "en").strip().lower()
+        if lang not in ("en", "kn"):
+            lang = "en"
+        conversation_store[session_id] = {
+            "messages": [],
+            "patient_record": {k: v for k, v in (known_answers or {}).items() if v not in (None, "")},
+            "current_question": current_question or 1,
+            "language": lang,
+            "created_at": datetime.now().isoformat()
+        }
+    return conversation_store[session_id]
 
 def add_message(session_id, role, content):
     """
@@ -1340,57 +1363,110 @@ def generate_knowledge_fallback_explanation(
     return "\n".join(lines)
 
 
-def load_knowledge_base(force: bool = False) -> int:
-    """Create or load the MiniLM + FAISS index from cache or OCR-readable PDFs in knowledge/."""
-    global chunks, chunk_texts, embedding_model, faiss_index, knowledge_load_error
-    if faiss_index is not None and not force:
-        return int(faiss_index.ntotal)
+class BM25Index:
+    """Lightweight in-memory BM25 index with source-title boosting for fast, zero-PyTorch knowledge retrieval."""
 
+    def __init__(self, chunks: list[dict[str, Any]], k1: float = 1.5, b: float = 0.75):
+        self.chunks = chunks
+        self.k1 = k1
+        self.b = b
+        self.corpus_tokens = [
+            self._tokenize(c.get("text", "") + " " + c.get("source", "") + " " + c.get("category", ""))
+            for c in chunks
+        ]
+        self.doc_lens = [len(toks) for toks in self.corpus_tokens]
+        self.avg_dl = sum(self.doc_lens) / max(len(self.doc_lens), 1)
+        self.N = len(chunks)
+        df: dict[str, int] = {}
+        for toks in self.corpus_tokens:
+            for t in set(toks):
+                df[t] = df.get(t, 0) + 1
+        self.idf = {
+            t: math.log((self.N - count + 0.5) / (count + 0.5) + 1.0)
+            for t, count in df.items()
+        }
+
+    @property
+    def ntotal(self) -> int:
+        return len(self.chunks)
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return re.findall(r"[a-z0-9]+", (text or "").lower())
+
+    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
+        q_tokens = self._tokenize(query)
+        if not q_tokens or not self.chunks:
+            return []
+        scores: list[tuple[float, int]] = []
+        for idx, (c, toks) in enumerate(zip(self.chunks, self.corpus_tokens)):
+            tf = Counter(toks)
+            dl = self.doc_lens[idx]
+            score = 0.0
+            source_toks = set(self._tokenize(c.get("source", "")))
+            for qt in q_tokens:
+                if qt in tf:
+                    term_idf = self.idf.get(qt, 0.5)
+                    term_tf = tf[qt]
+                    bm25 = term_idf * (term_tf * (self.k1 + 1.0)) / (
+                        term_tf + self.k1 * (1.0 - self.b + self.b * (dl / self.avg_dl))
+                    )
+                    score += bm25
+                if qt in source_toks:
+                    score += 3.0  # Strong boost for query terms matching source title
+            if score > 0:
+                scores.append((score, idx))
+
+        scores.sort(key=lambda x: x[0], reverse=True)
+        best_by_source: dict[str, dict[str, Any]] = {}
+        for sc, idx in scores:
+            c = self.chunks[idx]
+            src = c.get("source", "unknown")
+            if src not in best_by_source or sc > best_by_source[src]["score"]:
+                best_by_source[src] = {
+                    "text": c.get("text", ""),
+                    "source": src,
+                    "category": c.get("category", "unknown"),
+                    "score": round(float(sc), 4),
+                }
+        return sorted(best_by_source.values(), key=lambda x: x["score"], reverse=True)[:top_k]
+
+
+def load_knowledge_base(force: bool = False) -> int:
+    """Create or load the memory-efficient BM25 knowledge index from bundled cache or PDFs."""
+    global chunks, chunk_texts, bm25_index, faiss_index, knowledge_load_error
+    if bm25_index is not None and not force:
+        return bm25_index.ntotal
+
+    # Search for cached chunks.json in knowledge/ or knowledge/.cache/
+    bundled_chunks_file = KNOWLEDGE_DIR / "chunks.json"
+    cache_chunks_file = CACHE_DIR / "chunks.json"
+    chunks_file = bundled_chunks_file if bundled_chunks_file.exists() else cache_chunks_file
+
+    if not force and chunks_file.exists():
+        try:
+            with open(chunks_file, "r", encoding="utf-8") as f:
+                loaded_chunks = json.load(f)
+            if loaded_chunks:
+                chunks = loaded_chunks
+                chunk_texts = [c.get("text", "") for c in loaded_chunks]
+                bm25_index = BM25Index(chunks)
+                faiss_index = bm25_index  # Backwards compatibility alias
+                knowledge_load_error = None
+                logger.info("Loaded BM25 index from %s (%d chunks)", chunks_file.name, len(chunks))
+                return len(chunks)
+        except Exception as exc:
+            logger.warning("Failed loading cached chunks from %s (%s); rebuilding...", chunks_file, exc)
+
+    # Rebuild from PDFs if cache missing or force=True
     pdf_files = sorted(KNOWLEDGE_DIR.rglob("*.pdf"))
     if not pdf_files:
         knowledge_load_error = f"No PDF knowledge sources found in {KNOWLEDGE_DIR}"
-        chunks, chunk_texts, embedding_model, faiss_index = [], [], None, None
+        chunks, chunk_texts, bm25_index, faiss_index = [], [], None, None
         return 0
 
-    index_cache_file = CACHE_DIR / "faiss.index"
-    chunks_cache_file = CACHE_DIR / "chunks.json"
-    manifest_cache_file = CACHE_DIR / "manifest.json"
-
-    # Signature mapping for modification detection
-    current_signatures = {p.name: p.stat().st_mtime for p in pdf_files}
-
-    # 1. Fast path: load from disk cache if present and unchanged
-    if not force and index_cache_file.exists() and chunks_cache_file.exists() and manifest_cache_file.exists():
-        try:
-            with open(manifest_cache_file, "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-            if (
-                manifest.get("model") == EMBEDDING_MODEL_NAME
-                and manifest.get("pdf_count") == len(pdf_files)
-                and manifest.get("signatures") == current_signatures
-            ):
-                import faiss
-                from sentence_transformers import SentenceTransformer
-                loaded_index = faiss.read_index(str(index_cache_file))
-                with open(chunks_cache_file, "r", encoding="utf-8") as f:
-                    loaded_chunks = json.load(f)
-                loaded_texts = [c["text"] for c in loaded_chunks]
-                if embedding_model is None:
-                    embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-                faiss_index = loaded_index
-                chunks = loaded_chunks
-                chunk_texts = loaded_texts
-                knowledge_load_error = None
-                logger.info("Loaded FAISS index from disk cache: %d chunks", len(chunks))
-                return len(chunks)
-        except Exception as cache_exc:
-            logger.warning("Failed to load knowledge cache (%s); rebuilding...", cache_exc)
-
-    # 2. Slow path: build index from PDFs and cache to disk
     try:
         from pypdf import PdfReader
-        import faiss
-        from sentence_transformers import SentenceTransformer
         documents = []
         for pdf_path in pdf_files:
             try:
@@ -1399,71 +1475,55 @@ def load_knowledge_base(force: bool = False) -> int:
                 if text:
                     documents.append({"source": pdf_path.name, "category": pdf_path.parent.name, "text": text})
                 else:
-                    logger.warning("No text extracted from %s; OCR may be needed", pdf_path.name)
+                    logger.warning("No text extracted from %s", pdf_path.name)
             except Exception as exc:
                 logger.warning("Skipping PDF %s (%s)", pdf_path.name, type(exc).__name__)
+
         new_chunks = []
         step = CHUNK_SIZE - CHUNK_OVERLAP
         for doc in documents:
             for start in range(0, len(doc["text"]), step):
-                text = doc["text"][start:start + CHUNK_SIZE].strip()
-                if text:
-                    new_chunks.append({"text": text, "source": doc["source"], "category": doc["category"]})
+                chunk_str = doc["text"][start:start + CHUNK_SIZE].strip()
+                if chunk_str:
+                    new_chunks.append({"text": chunk_str, "source": doc["source"], "category": doc["category"]})
+
         if not new_chunks:
-            knowledge_load_error = "No extractable PDF text. OCR scanned PDFs before indexing."
-            chunks, chunk_texts, embedding_model, faiss_index = [], [], None, None
+            knowledge_load_error = "No extractable PDF text found."
+            chunks, chunk_texts, bm25_index, faiss_index = [], [], None, None
             return 0
-        model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        texts = [c["text"] for c in new_chunks]
-        vectors = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True, show_progress_bar=False).astype("float32")
-        index = faiss.IndexFlatIP(vectors.shape[1])
-        index.add(vectors)
-        chunks, chunk_texts, embedding_model, faiss_index = new_chunks, texts, model, index
+
+        chunks = new_chunks
+        chunk_texts = [c["text"] for c in new_chunks]
+        bm25_index = BM25Index(chunks)
+        faiss_index = bm25_index
         knowledge_load_error = None
 
-        # Write to disk cache
+        # Persist chunks cache for fast restarts
         try:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            faiss.write_index(index, str(index_cache_file))
-            with open(chunks_cache_file, "w", encoding="utf-8") as f:
-                json.dump(new_chunks, f, ensure_ascii=False)
-            with open(manifest_cache_file, "w", encoding="utf-8") as f:
-                json.dump({
-                    "model": EMBEDDING_MODEL_NAME,
-                    "pdf_count": len(pdf_files),
-                    "signatures": current_signatures,
-                    "chunk_count": len(new_chunks)
-                }, f, ensure_ascii=False)
-            logger.info("Saved FAISS index and chunks cache to %s (%d chunks)", CACHE_DIR, len(new_chunks))
+            with open(cache_chunks_file, "w", encoding="utf-8") as f:
+                json.dump(chunks, f, ensure_ascii=False)
+            with open(bundled_chunks_file, "w", encoding="utf-8") as f:
+                json.dump(chunks, f, ensure_ascii=False)
         except Exception as save_exc:
-            logger.warning("Could not persist knowledge cache: %s", save_exc)
+            logger.warning("Could not persist chunks cache: %s", save_exc)
 
-        logger.info("Built FAISS index: %s chunks from %s PDFs", len(chunks), len(documents))
+        logger.info("Built BM25 index: %d chunks from %d PDFs", len(chunks), len(documents))
         return len(chunks)
     except Exception as exc:
         knowledge_load_error = f"Knowledge initialization failed ({type(exc).__name__})"
         logger.exception("Knowledge initialization failed")
-        chunks, chunk_texts, embedding_model, faiss_index = [], [], None, None
+        chunks, chunk_texts, bm25_index, faiss_index = [], [], None, None
         return 0
 
 
 def retrieve_relevant_chunks(query, top_k=5):
-    if faiss_index is None or embedding_model is None:
+    global bm25_index
+    if bm25_index is None:
         load_knowledge_base()
-    if faiss_index is None or embedding_model is None or not chunk_texts:
+    if bm25_index is None or not chunk_texts:
         return []
-    query_vector = embedding_model.encode([query], convert_to_numpy=True, normalize_embeddings=True).astype("float32")
-    search_k = min(max(top_k * 5, 20), len(chunk_texts))
-    scores, indices = faiss_index.search(query_vector, search_k)
-    best_by_source = {}
-    for score, idx in zip(scores[0], indices[0]):
-        if idx < 0:
-            continue
-        c = chunks[int(idx)]
-        item = {"text": c["text"], "source": c["source"], "category": c.get("category", "unknown"), "score": float(score)}
-        if item["source"] not in best_by_source or item["score"] > best_by_source[item["source"]]["score"]:
-            best_by_source[item["source"]] = item
-    return sorted(best_by_source.values(), key=lambda x: x["score"], reverse=True)[:top_k]
+    return bm25_index.search(query, top_k=top_k)
 
 
 def _clean_knowledge_chunk_text(text: str) -> str:
@@ -1987,6 +2047,13 @@ class ChatRequest(BaseModel):
     message: str
     question_number: int | None = None
 
+class HydrateSessionRequest(BaseModel):
+    session_id: str
+    language: str = "en"
+    current_question: int | None = 1
+    patient_record: dict[str, Any] = Field(default_factory=dict)
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+
 def get_ai_service_key() -> str:
     key = os.getenv("AHCP_AI_SERVICE_API_KEY")
     if not key:
@@ -2022,15 +2089,11 @@ async def lifespan(app: FastAPI):
         logger.warning("AHCP_AI_SERVICE_API_KEY is unset; protected endpoints will return 503")
     if not is_valid_openrouter_key(get_openrouter_api_key()):
         logger.warning("OPENROUTER_API_KEY is unset or placeholder; trusted knowledge fallback generator will be used")
-    pdf_list = list(KNOWLEDGE_DIR.rglob("*.pdf"))
-    if not pdf_list:
-        logger.warning("No knowledge PDFs found in %s; add the project's processed PDF corpus", KNOWLEDGE_DIR)
-    else:
-        try:
-            total_loaded = load_knowledge_base()
-            logger.info("Knowledge base warmed up successfully with %d chunks", total_loaded)
-        except Exception as exc:
-            logger.warning("Failed to warm up knowledge base during startup: %s", exc)
+    try:
+        total_loaded = load_knowledge_base()
+        logger.info("Knowledge base warmed up successfully with %d chunks", total_loaded)
+    except Exception as exc:
+        logger.warning("Failed to warm up knowledge base during startup: %s", exc)
     yield
 
 app = FastAPI(title="AHCP AI Service", version="1.0.0", lifespan=lifespan)
@@ -2067,6 +2130,24 @@ def api_create_session(request: SessionRequest):
     question_number = first["question_number"]
     return {"session_id": session_id, "language": language, "question_number": question_number, "question": first["question"], "options": get_display_options(session_id, question_number)}
 
+@app.post("/session/hydrate", dependencies=[Depends(verify_ai_service_key)])
+def api_hydrate_session(request: HydrateSessionRequest):
+    sess = create_session_with_id(
+        request.session_id,
+        language=request.language or "en",
+        current_question=request.current_question or 1,
+        known_answers=request.patient_record
+    )
+    if request.language:
+        sess["language"] = (request.language or "en").strip().lower()
+    if request.current_question:
+        sess["current_question"] = request.current_question
+    if request.patient_record:
+        sess["patient_record"].update({k: v for k, v in request.patient_record.items() if v not in (None, "")})
+    if request.messages:
+        sess["messages"] = request.messages
+    return {"status": "hydrated", "session_id": request.session_id}
+
 @app.post("/chat", dependencies=[Depends(verify_ai_service_key)])
 def api_chat(request: ChatRequest):
     if get_session(request.session_id) is None:
@@ -2084,5 +2165,14 @@ def api_doctor_dashboard(session_id: str):
     if get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found.")
     return generate_doctor_dashboard_data(session_id)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    logger.info("Starting AHCP AI Service on %s:%d", host, port)
+    uvicorn.run("app:app", host=host, port=port, log_level="info")
+
 
 

@@ -1,7 +1,9 @@
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
-  (typeof window !== "undefined" && window.location.hostname === "127.0.0.1"
-    ? "http://127.0.0.1:5000/api"
+  (typeof window !== "undefined"
+    ? (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? (window.location.port === "5000" ? "/api" : `http://${window.location.hostname}:5000/api`)
+        : "/api")
     : "http://localhost:5000/api");
 
 export class ApiError extends Error {

@@ -2,3 +2,15 @@ backend/.env
 .env
 backend/.env.backup
 *.env.backup
+.env.*
+!.env.example
+ahcp-ai-service/.env
+**/.pytest_cache/
+**/__pycache__/
+*.pyc
+.vercel/
+**/.vercel/
+.output/
+**/.output/
+.wrangler/
+**/.wrangler/

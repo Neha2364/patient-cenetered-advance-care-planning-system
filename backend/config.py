@@ -40,10 +40,16 @@ class Config:
     
     # ReportLab Configuration
     # We will use this path to save temporary PDFs before uploading to Supabase
-    TEMP_PDF_DIR = os.path.join(os.path.dirname(__file__), "temp_pdfs")
+    TEMP_PDF_DIR = os.getenv("TEMP_PDF_DIR") or (
+        "/tmp/temp_pdfs" if (os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+        else os.path.join(os.path.dirname(__file__), "temp_pdfs")
+    )
 
     # AHCP AI Microservice Config
-    AHCP_AI_BASE_URL = os.getenv("AHCP_AI_BASE_URL", "http://127.0.0.1:8000")
+    AHCP_AI_BASE_URL = os.getenv(
+        "AHCP_AI_BASE_URL",
+        "inprocess" if (os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")) else "http://127.0.0.1:8000"
+    )
     AHCP_AI_SERVICE_API_KEY = os.getenv("AHCP_AI_SERVICE_API_KEY", "")
     AHCP_AI_TIMEOUT_SECONDS = int(os.getenv("AHCP_AI_TIMEOUT_SECONDS", 30))
 
@@ -92,4 +98,7 @@ class Config:
         print(f"[CONFIG DIAGNOSTIC] Supabase Host: {parsed_host} | Target Storage Bucket: {cls.SUPABASE_BUCKET}")
 
 # Ensure temporary PDF dir exists locally for buffer operations
-os.makedirs(Config.TEMP_PDF_DIR, exist_ok=True)
+try:
+    os.makedirs(Config.TEMP_PDF_DIR, exist_ok=True)
+except Exception as _e:
+    print(f"[CONFIG WARNING] Could not create TEMP_PDF_DIR {Config.TEMP_PDF_DIR}: {_e}")
